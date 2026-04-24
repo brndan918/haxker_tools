@@ -1,5 +1,5 @@
-# 設定編碼
 $OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # 1. 檢查並安裝 Scoop
 if (Get-Command scoop -ErrorAction SilentlyContinue) {
