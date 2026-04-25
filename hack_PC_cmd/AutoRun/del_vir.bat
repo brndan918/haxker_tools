@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 > nul
 
-set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\auto_start.vbs"
+set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\auto_host.vbs"
 
 if exist "%STARTUP%" (
     del /f /q "%STARTUP%"
