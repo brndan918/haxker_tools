@@ -5,6 +5,8 @@ set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\auto_host.v
 
 del /f /q "%STARTUP%"
 
+cd /d %temp%
+
 set "TARGET=C:\uptm"
 
 rmdir /s /q "%TARGET%"
