@@ -19,23 +19,25 @@ if (Get-Command upterm -ErrorAction SilentlyContinue) {
 
 # 2.5 Generate SSH Key for Upterm (if not exists)
 $sshDir = "$env:USERPROFILE\.ssh"
-$privateKey = "$sshDir\id_rsa"
-$publicKey = "$sshDir\id_rsa.pub"
+$privateKey = "$sshDir\id_ed25519"
+$publicKey = "$sshDir\id_ed25519.pub"
 
 if (!(Test-Path $privateKey)) {
-    Write-Host "Generating SSH key..."
+
+    Write-Host "Generating ED25519 SSH key..."
 
     if (!(Test-Path $sshDir)) {
         New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
     }
 
-    ssh-keygen -t rsa -b 4096 -f $privateKey -N "" -q
+    ssh-keygen -t ed25519 -f $privateKey -N "" -q
 
     Write-Host "SSH key generated:"
     Write-Host "Private Key: $privateKey"
     Write-Host "Public Key: $publicKey"
+
 } else {
-    Write-Host "SSH key already exists."
+    Write-Host "ED25519 SSH key already exists."
 }
 
 # 3. Create Directory
