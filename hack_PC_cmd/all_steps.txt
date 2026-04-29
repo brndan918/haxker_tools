@@ -9,6 +9,14 @@ if (Get-Command scoop -ErrorAction SilentlyContinue) {
     iwr -useb https://get.scoop.sh | iex
 }
 
+# 1.5 Install Git (required for Scoop buckets)
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    Write-Host "Git is already installed."
+} else {
+    Write-Host "Installing Git via Scoop..."
+    scoop install git
+}
+
 # 2. Check & Install Upterm
 if (Get-Command upterm -ErrorAction SilentlyContinue) {
     Write-Host "Upterm is already installed."
