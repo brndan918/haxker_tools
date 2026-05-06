@@ -28,11 +28,11 @@ $payload = @{
     )
 }
 
-# 4. 將物件轉換為 JSON 並強制轉換為 UTF-8 位元組
-$jsonPayload = $payload | ConvertTo-Json -Depth 10 -Compress
+# 4. 將物件轉換為 JSON 並將字串強制轉為 UTF-8 位元組
+$jsonPayload = $payload | ConvertTo-Json -Depth 10
 
-# 將字串轉換為 UTF-8 Byte Array (解決亂碼的核心)
-$bytePayload = [System.Text.Encoding]::UTF8.GetBytes($jsonPayload)
+# 強制使用 UTF-8 編碼轉換成 Byte 陣列
+$utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($jsonPayload)
 
-# 發送請求
-Invoke-RestMethod -Uri $uri -Method Post -Body $bytePayload -ContentType "application/json"
+# 發送時 Body 使用 Byte 陣列
+Invoke-RestMethod -Uri $uri -Method Post -Body $utf8Bytes -ContentType "application/json; charset=utf-8"
