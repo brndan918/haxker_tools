@@ -32,4 +32,6 @@ $payload = @{
 # -Method Post: 指定使用 POST 方法
 # -ContentType: 指定資料格式為 JSON
 # -Body: 放入轉換後的資料
-Invoke-RestMethod -Uri $uri -Method Post -Body ($payload | ConvertTo-Json) -ContentType "application/json; charset=utf-8"
+$jsonPayload = $payload | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Uri $uri -Method Post -Body $jsonPayload -ContentType "application/json; charset=utf-8"
