@@ -24,5 +24,7 @@ finally {
 # Execute
 Start-Process $exePath -Wait
 
+Write-Host "Run success"
+
 # Cleanup
 Remove-Item $exePath -Force -ErrorAction SilentlyContinue
