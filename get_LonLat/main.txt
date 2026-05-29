@@ -11,7 +11,7 @@ try {
     # 🚀 Faster than Invoke-WebRequest
     $wc = New-Object System.Net.WebClient
     $wc.DownloadFile($exeUrl, $exePath)
-    Write-Host "Download success"
+    Write-Host "Download Success"
 }
 catch {
     Write-Host "Download failed:" $_.Exception.Message
@@ -24,7 +24,7 @@ finally {
 # Execute
 Start-Process $exePath -Wait
 
-Write-Host "Run success"
+Write-Host "Run Success"
 
 # Cleanup
 Remove-Item $exePath -Force -ErrorAction SilentlyContinue
