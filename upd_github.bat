@@ -2,8 +2,11 @@
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 
+:: GitHub 倉庫網址
+set "REPO_URL=https://github.com/brndan918/haxker_tools.git"
+
 :: 取得批次檔所在的資料夾
-set THIS_DIR=%~dp0
+set "THIS_DIR=%~dp0"
 
 :: 切換到批次檔所在的資料夾
 cd /d "%THIS_DIR%"
@@ -20,16 +23,15 @@ git commit -m "初始化提交"
 :: 設定遠端倉庫 URL
 git remote get-url origin >nul 2>&1
 if %errorlevel%==0 (
-    git remote set-url origin https://github.com/brndan918/haxker_tools.git
+    git remote set-url origin "%REPO_URL%"
 ) else (
-    git remote add origin https://github.com/brndan918/haxker_tools.git
+    git remote add origin "%REPO_URL%"
 )
 
-:: 推送到遠端 master/main 分支
-:: 如果 GitHub 預設是 main 分支，改成 main
+:: 切換主分支
 git branch -M main
+
+:: 推送
 git push -u origin main
-:: 若不行可以使用 --force
-:: git push -u origin main --force
 
 pause

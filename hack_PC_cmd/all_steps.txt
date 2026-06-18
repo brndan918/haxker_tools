@@ -6,7 +6,16 @@ if (Get-Command scoop -ErrorAction SilentlyContinue) {
 } else {
     Write-Host "Installing Scoop..."
     Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-    iwr -useb https://get.scoop.sh | iex
+
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if ($isAdmin) {
+        iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
+    } else {
+        irm get.scoop.sh | iex
+    }
 }
 
 # 1.5 Install Git (required for Scoop buckets)
