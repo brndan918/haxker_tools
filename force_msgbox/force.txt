@@ -1,9 +1,9 @@
 param(
+        # 視窗標題 (預設: "測試訊息")
+    [string]$title = "測試訊息",
+    
     # 訊息內容 (預設: "這是一個測試訊息")
     [string]$msg = "這是一個測試訊息",
-
-    # 視窗標題 (預設: "測試訊息")
-    [string]$title = "測試訊息",
 
     # 圖示類型，只能輸入 "warn", "info", "error", "none" (預設: "none")
     [ValidateSet("warn", "info", "error", "none")]
