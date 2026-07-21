@@ -1,24 +1,24 @@
 param(
     # 訊息內容 (預設: "這是一個測試訊息")
-    [string]$Message = "這是一個測試訊息",
+    [string]$msg = "這是一個測試訊息",
 
     # 視窗標題 (預設: "測試訊息")
-    [string]$Title = "測試訊息",
+    [string]$title = "測試訊息",
 
     # 圖示類型，只能輸入 "warn", "info", "error", "none" (預設: "none")
     [ValidateSet("warn", "info", "error", "none")]
-    [string]$IconType = "none"
+    [string]$icon = "none"
 )
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # 將輸入的字串轉為對應的 WinForms 圖示列舉
-$icon = switch ($IconType) {
-    "warn"  { [System.Windows.Forms.MessageBoxIcon]::Warning }
-    "info"  { [System.Windows.Forms.MessageBoxIcon]::Information }
-    "error" { [System.Windows.Forms.MessageBoxIcon]::Error }
-    "none"  { [System.Windows.Forms.MessageBoxIcon]::None }
+$icon = switch ($icon) {
+    "warn"  { [System.Windows.Forms.msgBoxIcon]::Warning }
+    "info"  { [System.Windows.Forms.msgBoxIcon]::Information }
+    "error" { [System.Windows.Forms.msgBoxIcon]::Error }
+    "none"  { [System.Windows.Forms.msgBoxIcon]::None }
 }
 
 # 1. 建立全螢幕全透明遮罩視窗 (阻擋滑鼠點擊背景)
@@ -35,11 +35,11 @@ $maskForm.Show()
 $maskForm.Activate()
 
 # 2. 跳出訊息框
-[System.Windows.Forms.MessageBox]::Show(
+[System.Windows.Forms.msgBox]::Show(
     $maskForm, 
-    $Message, 
-    $Title, 
-    [System.Windows.Forms.MessageBoxButtons]::OK, 
+    $msg, 
+    $title, 
+    [System.Windows.Forms.msgBoxButtons]::OK, 
     $icon
 )
 
