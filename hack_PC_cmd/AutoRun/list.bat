@@ -5,7 +5,7 @@ chcp 65001 > nul
 tasklist /FI "IMAGENAME eq upterm.exe" 2>NUL | find /I "upterm.exe" >NUL
 
 if errorlevel 1 (
-    @REM powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name = 'cmd.exe'\" | Where-Object { $_.CommandLine -match 'host_uptm\.bat' } | ForEach-Object { taskkill /F /PID $_.ProcessId }"
+    :: powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name = 'cmd.exe'\" | Where-Object { $_.CommandLine -match 'host_uptm\.bat' } | ForEach-Object { taskkill /F /PID $_.ProcessId }"
     wscript.exe "C:\uptm\auto_host.vbs"
     exit
 )
