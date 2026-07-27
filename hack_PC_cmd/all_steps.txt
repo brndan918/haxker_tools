@@ -1,6 +1,6 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-taskkill /f /im upterm.exe
+# taskkill /f /im upterm.exe
 
 # 1. Check & Install Scoop
 if (Get-Command scoop -ErrorAction SilentlyContinue) {
