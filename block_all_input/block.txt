@@ -5,17 +5,23 @@ param(
     [int]$time = 10
 )
 
-# 計算預計解除的時間並顯示訊息
+# ==========================================
+# 在原本 Shell 印出說明與解除時間（HH:mm:ss.ms）
+# ==========================================
 $unlockTime = (Get-Date).AddSeconds($time).ToString("HH:mm:ss.fff")
-Write-Host "目前已經成功鎖定 將在 ${unlockTime} 解除" -ForegroundColor Yellow
+Write-Host "鍵盤和滑鼠輸入已被全域攔截（移動/點擊/滾輪均無效）" -ForegroundColor Yellow
+Write-Host "持續時間：$time 秒，預計將於 $unlockTime 解除。" -ForegroundColor Yellow
 
-# 將原始攔截邏輯包裝為 ScriptBlock
-$AsyncBlock = {
-    param([int]$DurationSeconds)
+# ==========================================
+# 直接啟動背景作業執行攔截邏輯（不卡住當前 Shell）
+# ==========================================
+Start-Job -ScriptBlock {
+    param($time)
 
     # ==========================================
     # 可配置參數（放在最上方，方便修改）
     # ==========================================
+    $DurationSeconds = $time       # 禁用輸入的總時長（秒）
     $HideCursor = $true            # 是否隱藏滑鼠游標（視覺增強）
     $BlockKeyboard = $true         # 是否攔截鍵盤（保留以便擴充）
     $BlockMouse = $true            # 是否攔截滑鼠（保留以便擴充）
@@ -29,73 +35,73 @@ $AsyncBlock = {
     # 低階鍵盤/滑鼠鉤子定義（C# 程式碼）
     # ==========================================
     $HookCode = @"
-    using System;
-    using System.Diagnostics;
-    using System.Runtime.InteropServices;
-    using System.Windows.Forms;
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
-    public class InputBlocker {
-        private const int WH_KEYBOARD_LL = 13;
-        private const int WH_MOUSE_LL = 14;
-        private const int WM_KEYDOWN = 0x0100;
-        private const int WM_SYSKEYDOWN = 0x0104;
+public class InputBlocker {
+    private const int WH_KEYBOARD_LL = 13;
+    private const int WH_MOUSE_LL = 14;
+    private const int WM_KEYDOWN = 0x0100;
+    private const int WM_SYSKEYDOWN = 0x0104;
 
-        private static LowLevelKeyboardProc _keyboardProc = KeyboardCallback;
-        private static LowLevelMouseProc _mouseProc = MouseCallback;
-        private static IntPtr _keyboardHookID = IntPtr.Zero;
-        private static IntPtr _mouseHookID = IntPtr.Zero;
+    private static LowLevelKeyboardProc _keyboardProc = KeyboardCallback;
+    private static LowLevelMouseProc _mouseProc = MouseCallback;
+    private static IntPtr _keyboardHookID = IntPtr.Zero;
+    private static IntPtr _mouseHookID = IntPtr.Zero;
 
-        public static void SetHook() {
-            using (Process curProcess = Process.GetCurrentProcess())
-            using (ProcessModule curModule = curProcess.MainModule) {
-                IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
-                _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, moduleHandle, 0);
-                _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, moduleHandle, 0);
-            }
+    public static void SetHook() {
+        using (Process curProcess = Process.GetCurrentProcess())
+        using (ProcessModule curModule = curProcess.MainModule) {
+            IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
+            _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, moduleHandle, 0);
+            _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, moduleHandle, 0);
         }
-
-        public static void Unhook() {
-            if (_keyboardHookID != IntPtr.Zero) {
-                UnhookWindowsHookEx(_keyboardHookID);
-                _keyboardHookID = IntPtr.Zero;
-            }
-            if (_mouseHookID != IntPtr.Zero) {
-                UnhookWindowsHookEx(_mouseHookID);
-                _mouseHookID = IntPtr.Zero;
-            }
-        }
-
-        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-        private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-        private static IntPtr KeyboardCallback(int nCode, IntPtr wParam, IntPtr lParam) {
-            if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
-                return (IntPtr)1; // 攔截所有按鍵
-            }
-            return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
-        }
-
-        private static IntPtr MouseCallback(int nCode, IntPtr wParam, lParam) {
-            if (nCode >= 0) {
-                return (IntPtr)1; // 攔截所有滑鼠訊息
-            }
-            return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
-        }
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn,
-            IntPtr hMod, uint dwThreadId);
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn,
-            IntPtr hMod, uint dwThreadId);
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
     }
+
+    public static void Unhook() {
+        if (_keyboardHookID != IntPtr.Zero) {
+            UnhookWindowsHookEx(_keyboardHookID);
+            _keyboardHookID = IntPtr.Zero;
+        }
+        if (_mouseHookID != IntPtr.Zero) {
+            UnhookWindowsHookEx(_mouseHookID);
+            _mouseHookID = IntPtr.Zero;
+        }
+    }
+
+    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    private static IntPtr KeyboardCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
+            return (IntPtr)1; // 攔截所有按鍵
+        }
+        return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
+    }
+
+    private static IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+        if (nCode >= 0) {
+            return (IntPtr)1; // 攔截所有滑鼠訊息
+        }
+        return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn,
+        IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn,
+        IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string lpModuleName);
+}
 "@
 
     # ==========================================
@@ -130,18 +136,5 @@ $AsyncBlock = {
         [System.Windows.Forms.Cursor]::Show()
     }
     [InputBlocker]::Unhook()
-}
 
-# 將程式碼轉為 Base64
-$bytes = [System.Text.Encoding]::Unicode.GetBytes("& { $AsyncBlock } -DurationSeconds $time")
-$encodedCommand = [Convert]::ToBase64String($bytes)
-
-# 使用 ProcessStartInfo 強制無建立視窗模式 (CreateNoWindow)
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "powershell.exe"
-$psi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
-$psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-$psi.CreateNoWindow = $true
-$psi.UseShellExecute = $false
-
-[System.Diagnostics.Process]::Start($psi) | Out-Null
+} -ArgumentList $time | Out-Null
