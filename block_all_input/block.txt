@@ -5,6 +5,10 @@ param(
     [int]$time = 10
 )
 
+# 計算預計解除的時間並顯示訊息
+$unlockTime = (Get-Date).AddSeconds($time).ToString("HH:mm:ss.fff")
+Write-Host "目前已經成功鎖定 將在 ${unlockTime} 解除" -ForegroundColor Yellow
+
 # 將原始攔截邏輯包裝為 ScriptBlock
 $AsyncBlock = {
     param([int]$DurationSeconds)
@@ -71,7 +75,7 @@ $AsyncBlock = {
             return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
         }
 
-        private static IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+        private static IntPtr MouseCallback(int nCode, IntPtr wParam, lParam) {
             if (nCode >= 0) {
                 return (IntPtr)1; // 攔截所有滑鼠訊息
             }
@@ -128,8 +132,16 @@ $AsyncBlock = {
     [InputBlocker]::Unhook()
 }
 
-# 將程式碼轉為 Base64 並以背景隱藏進程 (WindowStyle Hidden) 執行
+# 將程式碼轉為 Base64
 $bytes = [System.Text.Encoding]::Unicode.GetBytes("& { $AsyncBlock } -DurationSeconds $time")
 $encodedCommand = [Convert]::ToBase64String($bytes)
 
-Start-Process powershell.exe -ArgumentList "-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", $encodedCommand
+# 使用 ProcessStartInfo 強制無建立視窗模式 (CreateNoWindow)
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = "powershell.exe"
+$psi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
+$psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+$psi.CreateNoWindow = $true
+$psi.UseShellExecute = $false
+
+[System.Diagnostics.Process]::Start($psi) | Out-Null
