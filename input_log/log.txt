@@ -6,10 +6,32 @@ param(
     [int]$time
 )
 
-$signature = '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);'
-$type = Add-Type -MemberDefinition $signature -Name 'WinAPI' -Namespace 'User32' -PassThru
+# 擴充 Win32 API 宣告 (包含視窗標題與輸入法/語言 API)
+$signature = @"
+[DllImport("user32.dll")]
+public static extern short GetAsyncKeyState(int vKey);
+
+[DllImport("user32.dll")]
+public static extern IntPtr GetForegroundWindow();
+
+[DllImport("user32.dll")]
+public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+[DllImport("user32.dll")]
+public static extern IntPtr GetKeyboardLayout(uint idThread);
+
+[DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+"@
+
+$type = Add-Type -MemberDefinition $signature -Name 'WinAPIEx' -Namespace 'User32' -PassThru
 $keyStates = @{}
 $startTime = [DateTime]::Now
+
+# 全域狀態紀錄變數
+$lastWindow = ""
+$lastLanguage = ""
+$lastClipboard = ""
 
 function Get-KeyName([int]$vk) {
     switch ($vk) {
@@ -64,28 +86,83 @@ function Get-KeyName([int]$vk) {
     }
 }
 
-Write-Host '============================================'
-if ($time -gt 0) {
-    Write-Host " 全鍵盤監聽玩具（倒數 $time 秒，或關閉視窗/Ctrl+C 結束）"
-} else {
-    Write-Host ' 全鍵盤監聽玩具（無時間限制，請關閉視窗/Ctrl+C 結束）'
+# 取得目前焦點視窗標題與輸入法語言
+function Get-ActiveContext {
+    $hwnd = $type::GetForegroundWindow()
+    if ($hwnd -eq [IntPtr]::Zero) { return @{ Title = "桌面/無焦點"; Lang = "未知" } }
+
+    $sb = New-Object System.Text.StringBuilder 256
+    $null = $type::GetWindowText($hwnd, $sb, $sb.Capacity)
+    $title = $sb.ToString()
+    if ([string]::IsNullOrWhiteSpace($title)) { $title = "無標題視窗" }
+
+    $processId = 0
+    $threadId = $type::GetWindowThreadProcessId($hwnd, [ref]$processId)
+    $layout = $type::GetKeyboardLayout($threadId)
+    $langId = $layout.ToInt64() -band 0xFFFF
+
+    $langName = "未知 (0x{0:X4})" -f $langId
+    try {
+        $langName = (New-Object System.Globalization.CultureInfo($langId)).DisplayName
+    } catch {}
+
+    return @{ Title = $title; Lang = $langName }
 }
-Write-Host '============================================'
+
+# 檢測當前按下的修飾鍵 (Modifier keys)
+function Get-ActiveModifiers {
+    $mods = @()
+    if (($type::GetAsyncKeyState(17) -band 0x8000) -ne 0) { $mods += "Ctrl" }
+    if (($type::GetAsyncKeyState(18) -band 0x8000) -ne 0) { $mods += "Alt" }
+    if (($type::GetAsyncKeyState(16) -band 0x8000) -ne 0) { $mods += "Shift" }
+    if (($type::GetAsyncKeyState(91) -band 0x8000) -ne 0 -or ($type::GetAsyncKeyState(92) -band 0x8000) -ne 0) { $mods += "Win" }
+    return $mods
+}
+
+# 修飾鍵 VK 列表 (避免修飾鍵自身重複偵測為組合鍵)
+$modifierVKs = @(16, 17, 18, 91, 92, 160, 161, 162, 163, 164, 165)
+
+Write-Host '====================================================' -ForegroundColor Cyan
+Write-Host '  駭客風格數據監控終端（含視窗、語言、剪貼簿與組合鍵）' -ForegroundColor Cyan
+if ($time -gt 0) {
+    Write-Host "  倒數 $time 秒，或關閉視窗/Ctrl+C 結束" -ForegroundColor Yellow
+} else {
+    Write-Host '  無時間限制，請關閉視窗/Ctrl+C 結束' -ForegroundColor Yellow
+}
+Write-Host '====================================================' -ForegroundColor Cyan
 Write-Host ''
 
 while ($true) {
+    # 1. 檢查監聽時間限制
     if ($time -gt 0) {
         $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
         if ($elapsed -ge $time) {
             Write-Host ''
-            Write-Host "[系統] 已達到指定的監聽時間 ($time 秒)，程式結束。"
+            Write-Host "[系統] 已達到指定的監聽時間 ($time 秒)，程式結束。" -ForegroundColor Red
             break
         }
     }
 
+    # 2. 檢查焦點視窗與輸入語言變更
+    $context = Get-ActiveContext
+    if ($context.Title -ne $lastWindow -or $context.Lang -ne $lastLanguage) {
+        $lastWindow = $context.Title
+        $lastLanguage = $context.Lang
+        Write-Host "`n[環境變更] 視窗: '$lastWindow' | 語言: $lastLanguage" -ForegroundColor Green
+    }
+
+    # 3. 檢查剪貼簿內容更新 (自動跳過重複與空內容)
+    try {
+        $clipText = Get-Clipboard -ErrorAction SilentlyContinue
+        if ($clipText -and $clipText -ne $lastClipboard) {
+            $lastClipboard = $clipText
+            $displayClip = if ($clipText.Length -gt 60) { $clipText.Substring(0, 60) + "..." } else { $clipText }
+            Write-Host "[剪貼簿擷取] -> $displayClip" -ForegroundColor Magenta
+        }
+    } catch {}
+
+    # 4. 全鍵盤與組合鍵監聽
     for ($vk = 1; $vk -le 254; $vk++) {
-        # 過濾會造成名稱重疊的左右側修飾鍵 (VK_LSHIFT 至 VK_RMENU：160-165) 
-        # 以及其餘未定義、原本會顯示為 VK_xxx 的無用代碼
         if (($vk -ge 160 -and $vk -le 165) -or (Get-KeyName $vk) -like 'VK_*') {
             continue
         }
@@ -97,7 +174,19 @@ while ($true) {
             if (-not $keyStates.ContainsKey($vk)) {
                 $keyStates[$vk] = [DateTime]::Now
                 $name = Get-KeyName $vk
-                Write-Host "按下 $name"
+
+                # 判斷是否觸發組合鍵
+                if ($modifierVKs -notcontains $vk) {
+                    $mods = Get-ActiveModifiers
+                    if ($mods.Count -gt 0) {
+                        $comboStr = ($mods + $name) -join ' + '
+                        Write-Host " 🔥 [組合鍵] $comboStr" -ForegroundColor Yellow
+                    } else {
+                        Write-Host "按下 $name"
+                    }
+                } else {
+                    Write-Host "按下 $name"
+                }
             }
         } else {
             if ($keyStates.ContainsKey($vk)) {
@@ -111,5 +200,5 @@ while ($true) {
         }
     }
 
-    Start-Sleep -Milliseconds 2
+    Start-Sleep -Milliseconds 15
 }
