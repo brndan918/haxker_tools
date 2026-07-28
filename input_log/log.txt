@@ -6,7 +6,7 @@ param(
     [int]$time
 )
 
-# 使用動態類別名稱，解決 Add-Type 類別名稱衝突導致 $type 變成 $null 的問題
+# 使用動態類別名稱，避免重複載入衝突
 $rand = Get-Random
 $className = "WinAPIEx_$rand"
 
@@ -14,7 +14,6 @@ $code = @"
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
-using System.Diagnostics;
 
 public class $className {
     [StructLayout(LayoutKind.Sequential)]
@@ -56,7 +55,7 @@ public class $className {
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
-    // 原生 C# 滑鼠座標抓取 Helper (高效且不會丟出 Null 異常)
+    // 原生 C# 滑鼠座標抓取 Helper
     public static string GetMousePosString() {
         POINT pt;
         if (GetCursorPos(out pt)) {
@@ -67,8 +66,9 @@ public class $className {
 }
 "@
 
-# 正確載入 Type
-$type = Add-Type -TypeDefinition $code -PassThru
+# 核心修復：強制過濾出主類別，避免被 struct POINT 影響變成 [System.Object[]] 陣列
+$compiledTypes = Add-Type -TypeDefinition $code -PassThru
+$type = $compiledTypes | Where-Object { $_.Name -eq $className }
 
 # ANSI 色彩定義
 $ESC = [char]27
@@ -341,7 +341,7 @@ while ($true) {
         }
     }
 
-    # 4. 高效能鍵盤與滑鼠按鍵掃描 (使用 GetKeyboardState 與 GetAsyncKeyState 混合校驗)
+    # 4. 高效能鍵盤與滑鼠按鍵掃描
     $null = $type::GetKeyboardState($keyStateBuffer)
 
     for ($vk = 1; $vk -le 254; $vk++) {
@@ -349,7 +349,7 @@ while ($true) {
             continue
         }
 
-        # 雙重狀態確認，避免跨視窗漏抓
+        # 雙重狀態確認
         $isPressed = (($keyStateBuffer[$vk] -band 0x80) -ne 0) -or (($type::GetAsyncKeyState($vk) -band 0x8000) -ne 0)
 
         if ($isPressed) {
