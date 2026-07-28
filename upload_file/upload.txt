@@ -1,0 +1,96 @@
+param (
+    [Parameter(Mandatory=$true)]
+    [string]$FilePath
+)
+
+# 1. 檢查檔案是否存在
+if (-not (Test-Path $FilePath)) {
+    Write-Error "找不到指定的檔案：$FilePath"
+    exit
+}
+
+# 2. 檢查 ffsend 是否已安裝，若無則透過 scoop 安裝
+if (-not (Get-Command "ffsend" -ErrorAction SilentlyContinue)) {
+    Write-Host "找不到 ffsend，正在透過 Scoop 安裝..." -ForegroundColor Yellow
+    scoop install ffsend
+    if (-not (Get-Command "ffsend" -ErrorAction SilentlyContinue)) {
+        Write-Error "安裝 ffsend 失敗，請檢查 Scoop 是否正常運作。"
+        exit
+    }
+}
+
+# 3. 計算 1 天後的到期時間，並轉換成 Unix 時間戳記 (秒數)
+$ExpiryTime = (Get-Date).AddDays(1)
+$UnixTimestamp = [DateTimeOffset]::new($ExpiryTime).ToUnixTimeSeconds()
+
+# 組合符合 Discord Markdown 規範的動態時間語法
+# <t:xxx:F> 會顯示：2026年7月29日 下午5:11
+# <t:xxx:R> 會顯示動態倒數：1 天後 (會隨著時間一秒秒減少)
+$TimeValue = "<t:$UnixTimestamp:F> (<t:$UnixTimestamp:R>)"
+
+Write-Host "正在上傳檔案至 send.vis.ee..." -ForegroundColor Cyan
+
+# 4. 執行 ffsend 上傳並獲取網址 (指定主機、下載 3 次、保留 1 天)
+$UploadUrl = ffsend upload $FilePath --host "https://vis.ee" --downloads 3 --expiry 1d --incognito --quiet 2>$null
+
+# 如果上方獲取失敗，嘗試標準擷取方式
+if ([string]::IsNullOrEmpty($UploadUrl)) {
+    $Output = ffsend upload $FilePath --host "https://vis.ee" --downloads 3 --expiry 1d --incognito
+    if ($Output -match "Share link:\s*(https?://\S+)") {
+        $UploadUrl = $Matches[1]
+    }
+}
+
+# 檢查是否成功取得網址
+if ([string]::IsNullOrEmpty($UploadUrl)) {
+    Write-Error "檔案上傳失敗或無法解析網址。"
+    exit
+}
+
+Write-Host "上傳成功！網址為: $UploadUrl" -ForegroundColor Green
+Write-Host "正在發送 Discord Webhook..." -ForegroundColor Cyan
+
+# 5. 組裝 Discord Webhook Embed Payload
+$WebhookUrl = "https://discord.com/api/webhooks/1531586308491968522/Q5SyhEO8zg_gB5b4KLcYreFlg21GYNWlrzW6qo_aMG4LEf_LbKk0KtY9q9XZosM10sSx"
+
+$JsonBody = @{
+    embeds = @(
+        @{
+            title = "檔案接收"
+            color = 3066993 # 漂亮的綠藍色
+            fields = @(
+                @{
+                    name  = "檔案接收url"
+                    value = $UploadUrl
+                    inline = $false
+                },
+                @{
+                    name  = "甚麼時候到期"
+                    value = $TimeValue
+                    inline = $false
+                }
+            )
+            footer = @{
+                text = "最多下載3次"
+            }
+        }
+    )
+} | ConvertTo-Json -Depth 4
+
+# 6. 發送 Webhook 請求 (相容舊版 Windows PowerShell 5.1 的系統庫發送法)
+try {
+    [void][Reflection.Assembly]::LoadWithPartialName("System.Net.Http")
+    $HttpClient = New-Object System.Net.Http.HttpClient
+    $HttpContent = New-Object System.Net.Http.StringContent($JsonBody, [System.Text.Encoding]::UTF8, "application/json")
+    $Response = $HttpClient.PostAsync($WebhookUrl, $HttpContent).Result
+    
+    if ($Response.IsSuccessStatusCode) {
+        Write-Host "Discord 通知發送成功！" -ForegroundColor Green
+    } else {
+        Write-Warning "Discord 回傳錯誤碼: $($Response.StatusCode)"
+    }
+    $HttpClient.Dispose()
+    $HttpContent.Dispose()
+} catch {
+    Write-Error "發送 Webhook 時發生非預期錯誤: $_"
+}
