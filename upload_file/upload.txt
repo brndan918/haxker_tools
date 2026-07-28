@@ -1,6 +1,6 @@
 param (
     [Parameter(Mandatory=$true)]
-    [string]$FilePath
+    [string]$path
 )
 
 # 1. 檢查檔案是否存在
