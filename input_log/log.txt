@@ -6,33 +6,57 @@ param(
     [int]$time
 )
 
-# Win32 API 宣告 (監聽按鍵與 IMM32 輸入法狀態)
+# Win32 API 宣告 (視窗、鍵盤 GetKeyboardState、滑鼠座標、剪貼簿序號)
 $signature = @"
-[DllImport("user32.dll")]
-public static extern short GetAsyncKeyState(int vKey);
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
 
-[DllImport("user32.dll")]
-public static extern IntPtr GetForegroundWindow();
+public class WinAPI {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT {
+        public int X;
+        public int Y;
+    }
 
-[DllImport("user32.dll")]
-public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
 
-[DllImport("user32.dll")]
-public static extern IntPtr GetKeyboardLayout(uint idThread);
+    [DllImport("user32.dll")]
+    public static extern bool GetKeyboardState(byte[] lpKeyState);
 
-[DllImport("imm32.dll")]
-public static extern IntPtr ImmGetContext(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
 
-[DllImport("imm32.dll")]
-public static extern bool ImmGetConversionStatus(IntPtr hIMC, ref uint lpdwConversion, ref uint lpdwSentence);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
 
-[DllImport("imm32.dll")]
-public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetKeyboardLayout(uint idThread);
+
+    [DllImport("imm32.dll")]
+    public static extern IntPtr ImmGetContext(IntPtr hWnd);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmGetConversionStatus(IntPtr hIMC, ref uint lpdwConversion, ref uint lpdwSentence);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
+}
 "@
 
-# 動態類別名稱，避免同一 Session 重複執行衝突
+# 動態載入 C# 類別
 $uniqueName = "WinAPIEx_" + (Get-Random)
-$type = Add-Type -MemberDefinition $signature -Name $uniqueName -Namespace 'User32' -PassThru
+$type = Add-Type -TypeDefinition $signature -Name $uniqueName -PassThru
 
 # ANSI 色彩與控制碼
 $ESC = [char]27
@@ -40,7 +64,7 @@ $cReset = "$ESC[0m"
 $cBlue  = "$ESC[94m"  # 數字：藍色
 $cGreen = "$ESC[32m"  # 秒數單位 s：綠色
 
-# 按鍵專屬色彩調色盤
+# 按鍵色彩調色盤
 $keyPalette = @(
     "$ESC[91m", # 鮮紅
     "$ESC[93m", # 鮮黃
@@ -66,7 +90,7 @@ function Format-PlusSec([double]$sec1, [double]$sec2) {
     return "${cBlue}${s1}${cReset}+${cBlue}${s2}${cGreen}s${cReset}"
 }
 
-# 原生控制台行覆蓋工具
+# 擦除上一行/當前行 (供動態覆蓋使用)
 function Clear-PreviousLine {
     try {
         $top = [Console]::CursorTop - 1
@@ -87,10 +111,48 @@ function Clear-CurrentLine {
     } catch {}
 }
 
+# 取得滑鼠當前座標
+function Get-MousePosString {
+    $pt = New-Object "$($type.FullName)+POINT"
+    if ($type::GetCursorPos([ref]$pt)) {
+        return "XY: $($pt.X), $($pt.Y)"
+    }
+    return ""
+}
+
+# 取得目前聚焦的視窗資訊
+function Get-FocusedWindowInfo {
+    $hwnd = $type::GetForegroundWindow()
+    if ($hwnd -eq [IntPtr]::Zero) { return $null }
+
+    $processId = [uint32]0
+    $null = $type::GetWindowThreadProcessId($hwnd, [ref]$processId)
+    
+    $procName = "Unknown"
+    if ($processId -gt 0) {
+        try {
+            $p = [System.Diagnostics.Process]::GetProcessById($processId)
+            $procName = $p.ProcessName + ".exe"
+        } catch {}
+    }
+
+    $sb = New-Object System.Text.StringBuilder 512
+    $null = $type::GetWindowText($hwnd, $sb, $sb.Capacity)
+    $title = $sb.ToString()
+
+    return @{
+        Hwnd = $hwnd
+        Process = $procName
+        Title = $title
+        Formatted = "📌 [視窗切換] -> $procName | `"$title`""
+    }
+}
+
 function Get-KeyName([int]$vk) {
     switch ($vk) {
         1   { return '左鍵' }
         2   { return '右鍵' }
+        4   { return '中鍵' }
         8   { return 'Backspace' }
         9   { return 'Tab' }
         13  { return 'Enter' }
@@ -142,19 +204,18 @@ function Get-KeyName([int]$vk) {
     }
 }
 
-# 語言與中/英模式辨識 (含對照表補強，確保顯示中文名稱)
+# 語系與 IME 中英模式辨識
 function Get-CurrentLanguage {
     $hwnd = $type::GetForegroundWindow()
     if ($hwnd -eq [IntPtr]::Zero) { return $null }
     
-    $processId = 0
+    $processId = [uint32]0
     $threadId = $type::GetWindowThreadProcessId($hwnd, [ref]$processId)
     if ($threadId -eq 0) { return $null }
     
     $layout = $type::GetKeyboardLayout($threadId)
     $langId = $layout.ToInt64() -band 0xFFFF
 
-    # 常見語系映射表，防止CultureInfo解析失敗顯示16進位代碼
     $langMap = @{
         0x0404 = "繁體中文 (台灣)"
         0x0409 = "英文 (美國)"
@@ -174,7 +235,6 @@ function Get-CurrentLanguage {
         }
     }
 
-    # 檢測中文輸入法內的 [中/英] 轉換狀態
     $imeMode = ""
     if ($langId -eq 0x0404 -or $langId -eq 0x0804) {
         $hIMC = $type::ImmGetContext($hwnd)
@@ -195,13 +255,17 @@ function Get-CurrentLanguage {
     return "$langName$imeMode"
 }
 
+# 全域狀態控制變數
 $modifierVKs = @(91, 92, 160, 161, 162, 163, 164, 165)
+$mouseVKs = @(1, 2, 4)
 $keyStates = @{}
+$keyStateBuffer = New-Object byte[] 256 # 供 GetKeyboardState 使用的 256 位元組快取
+
 $startTime = [DateTime]::Now
 $lastLanguage = Get-CurrentLanguage
-$lastClipboard = ""
+$lastHwnd = [IntPtr]::Zero
+$lastClipSeq = $type::GetClipboardSequenceNumber()
 
-# 狀態記錄變數
 $comboActive = $false
 $comboChain = [System.Collections.Generic.List[psobject]]::new()
 $lastComboTime = $null
@@ -213,7 +277,7 @@ $lastSinglePressVk = 0
 $lastSinglePressTime = $null
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  資安測試終端：鍵盤/組合鍵/剪貼簿/語言切換監控" -ForegroundColor Cyan
+Write-Host "  資安測試終端：鍵盤/滑鼠/組合鍵/剪貼簿/視窗監控" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 if ($lastLanguage) {
@@ -230,7 +294,16 @@ while ($true) {
         }
     }
 
-    # 1. 語言與 IME 中/英切換偵測
+    # 1. 視窗切換監控
+    $winInfo = Get-FocusedWindowInfo
+    if ($winInfo -and $winInfo.Hwnd -ne $lastHwnd) {
+        $lastHwnd = $winInfo.Hwnd
+        if ($comboActive) { Write-Host ""; $comboActive = $false }
+        $canErasePreviousSinglePress = $false
+        Write-Host $winInfo.Formatted -ForegroundColor Cyan
+    }
+
+    # 2. 語言與 IME 中/英切換偵測
     $currentLang = Get-CurrentLanguage
     if ($currentLang -and $currentLang -ne $lastLanguage) {
         $lastLanguage = $currentLang
@@ -239,26 +312,45 @@ while ($true) {
         Write-Host "🌐 [語言切換] -> $lastLanguage" -ForegroundColor Yellow
     }
 
-    # 2. 剪貼簿變更偵測
-    try {
-        $clipText = Get-Clipboard -ErrorAction SilentlyContinue
-        if ($clipText -and $clipText -ne $lastClipboard) {
-            $lastClipboard = $clipText
-            if ($comboActive) { Write-Host ""; $comboActive = $false }
-            $canErasePreviousSinglePress = $false
-            $dispClip = if ($clipText.Length -gt 40) { $clipText.Substring(0, 40) + "..." } else { $clipText }
-            Write-Host "📋 [剪貼簿變更] -> $dispClip" -ForegroundColor Magenta
-        }
-    } catch {}
+    # 3. 多格式剪貼簿變更偵測 (以 ClipboardSequenceNumber 高效觸發)
+    $currentClipSeq = $type::GetClipboardSequenceNumber()
+    if ($currentClipSeq -ne $lastClipSeq) {
+        $lastClipSeq = $currentClipSeq
+        if ($comboActive) { Write-Host ""; $comboActive = $false }
+        $canErasePreviousSinglePress = $false
 
-    # 3. 按鍵監控與覆蓋邏輯
+        # A. 檢查是否為檔案複製 (FileDropList)
+        $files = Get-Clipboard -Format FileDropList -ErrorAction SilentlyContinue
+        if ($files) {
+            $fileNames = ($files | ForEach-Object { $_.Name }) -join ", "
+            $dispFiles = if ($fileNames.Length -gt 40) { $fileNames.Substring(0, 40) + "..." } else { $fileNames }
+            Write-Host "📋 [剪貼簿變更 - 檔案] -> 數量: $($files.Count) ($dispFiles)" -ForegroundColor Magenta
+        } else {
+            # B. 檢查是否為圖片 (Image)
+            $img = Get-Clipboard -Format Image -ErrorAction SilentlyContinue
+            if ($img) {
+                Write-Host "📋 [剪貼簿變更 - 圖片] -> 尺寸: $($img.Width)x$($img.Height) px" -ForegroundColor Magenta
+            } else {
+                # C. 檢查一般文字 (Text)
+                $clipText = Get-Clipboard -ErrorAction SilentlyContinue
+                if ($clipText) {
+                    $dispClip = if ($clipText.Length -gt 40) { $clipText.Substring(0, 40) + "..." } else { $clipText }
+                    Write-Host "📋 [剪貼簿變更 - 文字] -> $dispClip" -ForegroundColor Magenta
+                }
+            }
+        }
+    }
+
+    # 4. 高效能鍵盤與滑鼠按鍵掃描 (使用 GetKeyboardState 與 GetAsyncKeyState 混合校驗)
+    $null = $type::GetKeyboardState($keyStateBuffer)
+
     for ($vk = 1; $vk -le 254; $vk++) {
         if ($vk -eq 16 -or $vk -eq 17 -or $vk -eq 18 -or (Get-KeyName $vk) -like 'VK_*') {
             continue
         }
 
-        $state = $type::GetAsyncKeyState($vk)
-        $isPressed = ($state -band 0x8000) -ne 0
+        # 優先採納 GetKeyboardState 高速快取，若跨處理器視窗則輔以 GetAsyncKeyState 進行全域雙重校驗
+        $isPressed = (($keyStateBuffer[$vk] -band 0x80) -ne 0) -or (($type::GetAsyncKeyState($vk) -band 0x8000) -ne 0)
 
         if ($isPressed) {
             if (-not $keyStates.ContainsKey($vk)) {
@@ -266,6 +358,8 @@ while ($true) {
                 $keyStates[$vk] = $now
                 $kName = Get-KeyName $vk
                 $kColor = Get-KeyColor $vk
+                $isMouse = $mouseVKs -contains $vk
+                $posStr = if ($isMouse) { " " + (Get-MousePosString) } else { "" }
 
                 $activeModsCount = 0
                 foreach ($mvk in $modifierVKs) {
@@ -336,8 +430,8 @@ while ($true) {
 
                     Write-Host -NoNewline $outLine
                 } else {
-                    # --- 普通單鍵按下 ---
-                    Write-Host "按下 ${kColor}${kName}${cReset}"
+                    # --- 普通單鍵 / 滑鼠按下 ---
+                    Write-Host "按下 ${kColor}${kName}${cReset}$posStr"
                     $canErasePreviousSinglePress = $true
                     $lastSinglePressVk = $vk
                     $lastSinglePressTime = $now
@@ -352,6 +446,8 @@ while ($true) {
                 $kName = Get-KeyName $vk
                 $kColor = Get-KeyColor $vk
                 $durStr = Format-Sec $duration
+                $isMouse = $mouseVKs -contains $vk
+                $posStr = if ($isMouse) { " " + (Get-MousePosString) } else { "" }
 
                 if ($comboActive) {
                     if ($modifierVKs -notcontains $vk) {
@@ -370,12 +466,12 @@ while ($true) {
                         $canErasePreviousSinglePress = $false
                     }
                 } else {
-                    # --- 單鍵放開：擦除上一行「按下 [key]」，覆蓋成「按下又放開 [key] 持續 [幾]s」 ---
+                    # --- 單鍵 / 滑鼠放開覆蓋 ---
                     if ($canErasePreviousSinglePress -and $lastSinglePressVk -eq $vk) {
                         Clear-PreviousLine
-                        Write-Host "按下又放開 ${kColor}${kName}${cReset} 持續 $durStr"
+                        Write-Host "按下又放開 ${kColor}${kName}${cReset} 持續 $durStr$posStr"
                     } else {
-                        Write-Host "放開 ${kColor}${kName}${cReset} $durStr"
+                        Write-Host "放開 ${kColor}${kName}${cReset} $durStr$posStr"
                     }
                     $canErasePreviousSinglePress = $false
                 }
@@ -383,5 +479,6 @@ while ($true) {
         }
     }
 
-    Start-Sleep -Milliseconds 10
+    # 效能提升：休眠時間改為 2ms
+    Start-Sleep -Milliseconds 2
 }
