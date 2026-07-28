@@ -2,7 +2,8 @@
 # & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/block_all_input/block.txt").Content)) -time 10
 
 param(
-    [int]$time = 10
+    [Parameter(Mandatory=$true)]
+    [int]$time
 )
 
 # ==========================================
