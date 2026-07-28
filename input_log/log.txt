@@ -6,7 +6,7 @@ param(
     [int]$time
 )
 
-# 擴充 Win32 API 宣告 (包含視窗標題與輸入法/語言 API)
+# Win32 API 宣告 (監聽按鍵與語言狀態)
 $signature = @"
 [DllImport("user32.dll")]
 public static extern short GetAsyncKeyState(int vKey);
@@ -19,50 +19,78 @@ public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwPro
 
 [DllImport("user32.dll")]
 public static extern IntPtr GetKeyboardLayout(uint idThread);
-
-[DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 "@
 
 $type = Add-Type -MemberDefinition $signature -Name 'WinAPIEx' -Namespace 'User32' -PassThru
-$keyStates = @{}
-$startTime = [DateTime]::Now
 
-# 全域狀態紀錄變數
-$lastWindow = ""
-$lastLanguage = ""
-$lastClipboard = ""
+# ANSI 顏色控制碼
+$ESC = [char]27
+$cReset = "$ESC[0m"
+$cBlue  = "$ESC[94m"  # 數字：藍色
+$cGreen = "$ESC[32m"  # 秒數單位 s：綠色
 
+# 按鍵專屬調色盤 (避開藍色與綠色，供按鍵循環套用)
+$keyPalette = @(
+    "$ESC[91m", # 鮮紅
+    "$ESC[93m", # 鮮黃
+    "$ESC[95m", # 洋紅
+    "$ESC[96m", # 青色
+    "$ESC[97m", # 白色
+    "$ESC[33m", # 深黃
+    "$ESC[35m"  # 深紫
+)
+
+# 取得按鍵的固定專屬顏色
+function Get-KeyColor([int]$vk) {
+    return $keyPalette[$vk % $keyPalette.Count]
+}
+
+# 格式化單一時間數字 (數字藍、s綠)
+function Format-Sec([double]$sec) {
+    $val = $sec.ToString('F2')
+    return "${cBlue}${val}${cGreen}s${cReset}"
+}
+
+# 格式化累加時間 (如 0.20+3.05s)
+function Format-PlusSec([double]$sec1, [double]$sec2) {
+    $s1 = $sec1.ToString('F2')
+    $s2 = $sec2.ToString('F2')
+    return "${cBlue}${s1}${cReset}+${cBlue}${s2}${cGreen}s${cReset}"
+}
+
+# 鍵盤代碼轉換名稱 (包含區分左右修飾鍵)
 function Get-KeyName([int]$vk) {
     switch ($vk) {
-        1 { return '左鍵' }
-        2 { return '右鍵' }
-        8 { return 'Backspace' }
-        9 { return 'Tab' }
-        13 { return 'Enter' }
-        16 { return 'Shift' }
-        17 { return 'Ctrl' }
-        18 { return 'Alt' }
-        19 { return 'Pause' }
-        20 { return 'Caps Lock' }
-        27 { return 'ESC' }
-        32 { return 'Space' }
-        33 { return 'Page Up' }
-        34 { return 'Page Down' }
-        35 { return 'End' }
-        36 { return 'Home' }
-        37 { return '← (Left)' }
-        38 { return '↑ (Up)' }
-        39 { return '→ (Right)' }
-        40 { return '↓ (Down)' }
-        44 { return 'Print Screen' }
-        45 { return 'Insert' }
-        46 { return 'Delete' }
-        91 { return 'Win (Left)' }
-        92 { return 'Win (Right)' }
-        93 { return '選單鍵 (Apps)' }
-        144{ return 'Num Lock' }
-        145{ return 'Scroll Lock' }
+        1   { return '左鍵' }
+        2   { return '右鍵' }
+        8   { return 'Backspace' }
+        9   { return 'Tab' }
+        13  { return 'Enter' }
+        20  { return 'Caps Lock' }
+        27  { return 'ESC' }
+        32  { return 'Space' }
+        33  { return 'Page Up' }
+        34  { return 'Page Down' }
+        35  { return 'End' }
+        36  { return 'Home' }
+        37  { return '← (Left)' }
+        38  { return '↑ (Up)' }
+        39  { return '→ (Right)' }
+        40  { return '↓ (Down)' }
+        44  { return 'Print Screen' }
+        45  { return 'Insert' }
+        46  { return 'Delete' }
+        91  { return 'LWin' }
+        92  { return 'RWin' }
+        93  { return '選單鍵' }
+        144 { return 'Num Lock' }
+        145 { return 'Scroll Lock' }
+        160 { return 'LShift' }
+        161 { return 'RShift' }
+        162 { return 'LCtrl' }
+        163 { return 'RCtrl' }
+        164 { return 'LAlt' }
+        165 { return 'RAlt' }
         default {
             if ($vk -ge 48 -and $vk -le 57) { return [char]$vk }
             if ($vk -ge 65 -and $vk -le 90) { return [char]$vk }
@@ -86,84 +114,80 @@ function Get-KeyName([int]$vk) {
     }
 }
 
-# 取得目前焦點視窗標題與輸入法語言
-function Get-ActiveContext {
+# 取得當前焦點視窗的輸入語言
+function Get-CurrentLanguage {
     $hwnd = $type::GetForegroundWindow()
-    if ($hwnd -eq [IntPtr]::Zero) { return @{ Title = "桌面/無焦點"; Lang = "未知" } }
-
-    $sb = New-Object System.Text.StringBuilder 256
-    $null = $type::GetWindowText($hwnd, $sb, $sb.Capacity)
-    $title = $sb.ToString()
-    if ([string]::IsNullOrWhiteSpace($title)) { $title = "無標題視窗" }
-
+    if ($hwnd -eq [IntPtr]::Zero) { return $null }
     $processId = 0
     $threadId = $type::GetWindowThreadProcessId($hwnd, [ref]$processId)
+    if ($threadId -eq 0) { return $null }
     $layout = $type::GetKeyboardLayout($threadId)
     $langId = $layout.ToInt64() -band 0xFFFF
-
-    $langName = "未知 (0x{0:X4})" -f $langId
     try {
-        $langName = (New-Object System.Globalization.CultureInfo($langId)).DisplayName
-    } catch {}
-
-    return @{ Title = $title; Lang = $langName }
+        return (New-Object System.Globalization.CultureInfo($langId)).DisplayName
+    } catch {
+        return "0x{0:X4}" -f $langId
+    }
 }
 
-# 檢測當前按下的修飾鍵 (Modifier keys)
-function Get-ActiveModifiers {
-    $mods = @()
-    if (($type::GetAsyncKeyState(17) -band 0x8000) -ne 0) { $mods += "Ctrl" }
-    if (($type::GetAsyncKeyState(18) -band 0x8000) -ne 0) { $mods += "Alt" }
-    if (($type::GetAsyncKeyState(16) -band 0x8000) -ne 0) { $mods += "Shift" }
-    if (($type::GetAsyncKeyState(91) -band 0x8000) -ne 0 -or ($type::GetAsyncKeyState(92) -band 0x8000) -ne 0) { $mods += "Win" }
-    return $mods
-}
+# 修飾鍵 VK 列表
+$modifierVKs = @(91, 92, 160, 161, 162, 163, 164, 165)
 
-# 修飾鍵 VK 列表 (避免修飾鍵自身重複偵測為組合鍵)
-$modifierVKs = @(16, 17, 18, 91, 92, 160, 161, 162, 163, 164, 165)
+# 全域狀態變數
+$keyStates = @{}
+$startTime = [DateTime]::Now
+$lastLanguage = Get-CurrentLanguage
+$lastClipboard = ""
 
-Write-Host '====================================================' -ForegroundColor Cyan
-Write-Host '  駭客風格數據監控終端（含視窗、語言、剪貼簿與組合鍵）' -ForegroundColor Cyan
-if ($time -gt 0) {
-    Write-Host "  倒數 $time 秒，或關閉視窗/Ctrl+C 結束" -ForegroundColor Yellow
-} else {
-    Write-Host '  無時間限制，請關閉視窗/Ctrl+C 結束' -ForegroundColor Yellow
+# 組合鍵狀態
+$comboActive = $false
+$comboChain = [System.Collections.Generic.List[psobject]]::new()
+$lastComboTime = $null
+$prevKeyReleased = $false
+$prevGapSec = 0.0
+
+Write-Host "====================================================" -ForegroundColor Cyan
+Write-Host "  資安測試終端：鍵盤/組合鍵/剪貼簿/語言切換監控" -ForegroundColor Cyan
+Write-Host "====================================================" -ForegroundColor Cyan
+Write-Host ""
+if ($lastLanguage) {
+    Write-Host "🌐 [初始輸入語言] -> $lastLanguage" -ForegroundColor Yellow
 }
-Write-Host '====================================================' -ForegroundColor Cyan
-Write-Host ''
 
 while ($true) {
-    # 1. 檢查監聽時間限制
+    # 倒數計時結束檢查
     if ($time -gt 0) {
         $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
         if ($elapsed -ge $time) {
-            Write-Host ''
-            Write-Host "[系統] 已達到指定的監聽時間 ($time 秒)，程式結束。" -ForegroundColor Red
+            if ($comboActive) { Write-Host ""; $comboActive = $false }
+            Write-Host "`n[系統] 已達到指定的監聽時間 ($time 秒)，程式結束。" -ForegroundColor Red
             break
         }
     }
 
-    # 2. 檢查焦點視窗與輸入語言變更
-    $context = Get-ActiveContext
-    if ($context.Title -ne $lastWindow -or $context.Lang -ne $lastLanguage) {
-        $lastWindow = $context.Title
-        $lastLanguage = $context.Lang
-        Write-Host "`n[環境變更] 視窗: '$lastWindow' | 語言: $lastLanguage" -ForegroundColor Green
+    # 1. 偵測語言切換
+    $currentLang = Get-CurrentLanguage
+    if ($currentLang -and $currentLang -ne $lastLanguage) {
+        $lastLanguage = $currentLang
+        if ($comboActive) { Write-Host ""; $comboActive = $false }
+        Write-Host "`n🌐 [語言切換] -> $lastLanguage" -ForegroundColor Yellow
     }
 
-    # 3. 檢查剪貼簿內容更新 (自動跳過重複與空內容)
+    # 2. 偵測剪貼簿變更
     try {
         $clipText = Get-Clipboard -ErrorAction SilentlyContinue
         if ($clipText -and $clipText -ne $lastClipboard) {
             $lastClipboard = $clipText
-            $displayClip = if ($clipText.Length -gt 60) { $clipText.Substring(0, 60) + "..." } else { $clipText }
-            Write-Host "[剪貼簿擷取] -> $displayClip" -ForegroundColor Magenta
+            if ($comboActive) { Write-Host ""; $comboActive = $false }
+            $dispClip = if ($clipText.Length -gt 40) { $clipText.Substring(0, 40) + "..." } else { $clipText }
+            Write-Host "`n📋 [剪貼簿變更] -> $dispClip" -ForegroundColor Magenta
         }
     } catch {}
 
-    # 4. 全鍵盤與組合鍵監聽
+    # 3. 按鍵掃描
     for ($vk = 1; $vk -le 254; $vk++) {
-        if (($vk -ge 160 -and $vk -le 165) -or (Get-KeyName $vk) -like 'VK_*') {
+        # 過濾通用 Shift/Ctrl/Alt (16,17,18) 避免與左右實體鍵重複，並過濾未定義鍵
+        if ($vk -eq 16 -or $vk -eq 17 -or $vk -eq 18 -or (Get-KeyName $vk) -like 'VK_*') {
             continue
         }
 
@@ -172,20 +196,68 @@ while ($true) {
 
         if ($isPressed) {
             if (-not $keyStates.ContainsKey($vk)) {
-                $keyStates[$vk] = [DateTime]::Now
-                $name = Get-KeyName $vk
+                $now = [DateTime]::Now
+                $keyStates[$vk] = $now
+                $kName = Get-KeyName $vk
+                $kColor = Get-KeyColor $vk
 
-                # 判斷是否觸發組合鍵
-                if ($modifierVKs -notcontains $vk) {
-                    $mods = Get-ActiveModifiers
-                    if ($mods.Count -gt 0) {
-                        $comboStr = ($mods + $name) -join ' + '
-                        Write-Host " 🔥 [組合鍵] $comboStr" -ForegroundColor Yellow
+                # 檢查當前是否有修飾鍵按住 (判斷是否觸發組合鍵)
+                $hasActiveModifier = $false
+                foreach ($mvk in $modifierVKs) {
+                    if ($keyStates.ContainsKey($mvk)) { $hasActiveModifier = $true; break }
+                }
+
+                if ($hasActiveModifier -or ($modifierVKs -contains $vk)) {
+                    # --- 進入組合鍵模式 ---
+                    if (-not $comboActive) {
+                        # 啟動新的組合鍵鏈
+                        $comboActive = $true
+                        $comboChain.Clear()
+                        $lastComboTime = $now
+                        $prevKeyReleased = $false
+
+                        $comboChain.Add([pscustomobject]@{
+                            Vk = $vk
+                            KeyName = $kName
+                            TimeExpr = ""
+                        })
                     } else {
-                        Write-Host "按下 $name"
+                        # 繼續追加組合鍵鏈中的按鍵
+                        $delta = ($now - $lastComboTime).TotalSeconds
+                        $lastComboTime = $now
+
+                        # 判斷時間格式 (若前一個按鍵放開後修飾鍵持續按住，則呈現 0.20+3.05s 格式)
+                        $timeExpr = ""
+                        if ($prevKeyReleased) {
+                            $timeExpr = Format-PlusSec $prevGapSec $delta
+                            $prevKeyReleased = $false
+                        } else {
+                            $timeExpr = Format-Sec $delta
+                        }
+
+                        $comboChain.Add([pscustomobject]@{
+                            Vk = $vk
+                            KeyName = $kName
+                            TimeExpr = $timeExpr
+                        })
                     }
+
+                    # 組裝動態輸出字串
+                    $outLine = "🔥 [組合鍵] "
+                    foreach ($item in $comboChain) {
+                        $itemColor = Get-KeyColor $item.Vk
+                        if ($item.TimeExpr -ne "") {
+                            $outLine += "$($item.TimeExpr) "
+                        }
+                        $outLine += "${itemColor}$($item.KeyName)${cReset} "
+                    }
+
+                    # 重置游標到行首並覆蓋整行
+                    Write-Host -NoNewline "`r$ESC[2K$outLine"
                 } else {
-                    Write-Host "按下 $name"
+                    # --- 普通單鍵按下 ---
+                    if ($comboActive) { Write-Host ""; $comboActive = $false }
+                    Write-Host "按下 ${kColor}${kName}${cReset}"
                 }
             }
         } else {
@@ -193,12 +265,36 @@ while ($true) {
                 $pressTime = $keyStates[$vk]
                 $duration = ([DateTime]::Now - $pressTime).TotalSeconds
                 $keyStates.Remove($vk)
-                $name = Get-KeyName $vk
-                $durStr = $duration.ToString('F1')
-                Write-Host "放開 $name 持續 $durStr 秒"
+
+                $kName = Get-KeyName $vk
+                $kColor = Get-KeyColor $vk
+                $durStr = Format-Sec $duration
+
+                if ($comboActive) {
+                    # 組合鍵中的按鍵放開
+                    if ($modifierVKs -notcontains $vk) {
+                        $prevKeyReleased = $true
+                        $prevGapSec = $duration
+                    }
+
+                    # 檢查是否所有修飾鍵皆已放開
+                    $remainingMods = $false
+                    foreach ($mvk in $modifierVKs) {
+                        if ($keyStates.ContainsKey($mvk)) { $remainingMods = $true; break }
+                    }
+
+                    if (-not $remainingMods) {
+                        # 結束組合鍵輸出並換行
+                        Write-Host ""
+                        $comboActive = $false
+                    }
+                } else {
+                    # 普通按鍵放開輸出
+                    Write-Host "放開 ${kColor}${kName}${cReset} $durStr"
+                }
             }
         }
     }
 
-    Start-Sleep -Milliseconds 15
+    Start-Sleep -Milliseconds 10
 }
