@@ -8,16 +8,15 @@ param(
 
 $signature = '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);'
 $type = Add-Type -MemberDefinition $signature -Name 'WinAPI' -Namespace 'User32' -PassThru
-
 $keyStates = @{}
 $startTime = [DateTime]::Now
 
 function Get-KeyName([int]$vk) {
     switch ($vk) {
-        1  { return '左鍵' }
-        2  { return '右鍵' }
-        8  { return 'Backspace' }
-        9  { return 'Tab' }
+        1 { return '左鍵' }
+        2 { return '右鍵' }
+        8 { return 'Backspace' }
+        9 { return 'Tab' }
         13 { return 'Enter' }
         16 { return 'Shift' }
         17 { return 'Ctrl' }
@@ -48,10 +47,17 @@ function Get-KeyName([int]$vk) {
             if ($vk -ge 96 -and $vk -le 105) { return 'NumPad ' + ($vk - 96) }
             if ($vk -ge 112 -and $vk -le 123) { return 'F' + ($vk - 111) }
             switch ($vk) {
-                186 { return ';' } 187 { return '=' } 188 { return ',' }
-                189 { return '-' } 190 { return '.' } 191 { return '/' }
-                192 { return '`' } 219 { return '[' } 220 { return '\' }
-                221 { return ']' } 222 { return "'" }
+                186 { return ';' }
+                187 { return '=' }
+                188 { return ',' }
+                189 { return '-' }
+                190 { return '.' }
+                191 { return '/' }
+                192 { return '`' }
+                219 { return '[' }
+                220 { return '\' }
+                221 { return ']' }
+                222 { return "'" }
                 default { return 'VK_' + $vk }
             }
         }
@@ -60,9 +66,9 @@ function Get-KeyName([int]$vk) {
 
 Write-Host '============================================'
 if ($time -gt 0) {
-    Write-Host "   全鍵盤監聽玩具（倒數 $time 秒，或關閉視窗/Ctrl+C 結束）"
+    Write-Host " 全鍵盤監聽玩具（倒數 $time 秒，或關閉視窗/Ctrl+C 結束）"
 } else {
-    Write-Host '   全鍵盤監聽玩具（無時間限制，請關閉視窗/Ctrl+C 結束）'
+    Write-Host ' 全鍵盤監聽玩具（無時間限制，請關閉視窗/Ctrl+C 結束）'
 }
 Write-Host '============================================'
 Write-Host ''
@@ -78,6 +84,12 @@ while ($true) {
     }
 
     for ($vk = 1; $vk -le 254; $vk++) {
+        # 過濾會造成名稱重疊的左右側修飾鍵 (VK_LSHIFT 至 VK_RMENU：160-165) 
+        # 以及其餘未定義、原本會顯示為 VK_xxx 的無用代碼
+        if (($vk -ge 160 -and $vk -le 165) -or (Get-KeyName $vk) -like 'VK_*') {
+            continue
+        }
+
         $state = $type::GetAsyncKeyState($vk)
         $isPressed = ($state -band 0x8000) -ne 0
 
@@ -98,5 +110,6 @@ while ($true) {
             }
         }
     }
-    Start-Sleep -Milliseconds 15
+
+    Start-Sleep -Milliseconds 2
 }
