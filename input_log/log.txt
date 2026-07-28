@@ -30,7 +30,9 @@ public static extern bool ImmGetConversionStatus(IntPtr hIMC, ref uint lpdwConve
 public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
 "@
 
-$type = Add-Type -MemberDefinition $signature -Name 'WinAPIEx' -Namespace 'User32' -PassThru
+# 動態生成唯一類別名稱，避免同一 Session 重複執行時 $type 變成 $null
+$uniqueName = "WinAPIEx_" + (Get-Random)
+$type = Add-Type -MemberDefinition $signature -Name $uniqueName -Namespace 'User32' -PassThru
 
 # ANSI 顏色控制碼
 $ESC = [char]27
@@ -145,7 +147,6 @@ function Get-CurrentLanguage {
         $conv = [uint32]0
         $sent = [uint32]0
         if ($type::ImmGetConversionStatus($hIMC, [ref]$conv, [ref]$sent)) {
-            # 0x0001 (IME_CMODE_NATIVE) 表示中文/原生模式
             if (($conv -band 1) -eq 1) {
                 $imeMode = " [中]"
             } else {
