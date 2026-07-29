@@ -1,5 +1,5 @@
 # 請使用以下方法進行參數傳送
-# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/force_msgbox/msg.txt").Content))
+# $p=@{}; if($t=Read-Host "標題"){$p.title=$t}; if($m=Read-Host "訊息內容"){$p.msg=$m}; if($i=Read-Host "圖標(none, info, warn, error)"){$p.icon=$i}; & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/force_msgbox/msg.txt").Content)) @p
 
 param(
     # 視窗標題 (預設: "測試訊息")
