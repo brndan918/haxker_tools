@@ -61,7 +61,7 @@ public class $className {
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
-    // 抓取滑鼠座標並對 X(綠色) 與 Y(紅色) 進行色彩渲染
+    // 抓取滑鼠座標並對 X(鮮綠色) 與 Y(鮮紅色) 進行高亮渲染
     public static string GetMousePosStringColored(string greenEsc, string redEsc, string resetEsc) {
         POINT pt;
         if (GetCursorPos(out pt)) {
@@ -76,10 +76,8 @@ public class $className {
 
         IntPtr imeWnd = ImmGetDefaultIMEWnd(hwnd);
         if (imeWnd != IntPtr.Zero) {
-            // WM_IME_CONTROL = 0x0283, IMC_GETOPENSTATUS = 0x0005
             IntPtr openStatus = SendMessage(imeWnd, 0x0283, (IntPtr)0x0005, IntPtr.Zero);
             if (openStatus != IntPtr.Zero) {
-                // IMC_GETCONVERSIONMODE = 0x0001
                 IntPtr convMode = SendMessage(imeWnd, 0x0283, (IntPtr)0x0001, IntPtr.Zero);
                 if ((convMode.ToInt64() & 1) != 0) {
                     return " [中]";
@@ -106,17 +104,17 @@ public class $className {
 }
 "@
 
-# 核心修復：精準過濾主類別，防止被 struct POINT 轉為陣列
+# 強制過濾出主類別，防止 struct POINT 干擾
 $compiledTypes = Add-Type -TypeDefinition $code -PassThru
 $type = $compiledTypes | Where-Object { $_.Name -eq $className }
 
 # ANSI 色彩控制碼
 $ESC = [char]27
-$cReset = "$ESC[0m"
-$cGray  = "$ESC[90m"  # 時間戳記：深灰色
-$cBlue  = "$ESC[94m"  # 數字/秒數：藍色
-$cGreen = "$ESC[32m"  # X座標 / s單位：綠色
-$cRed   = "$ESC[31m"  # Y座標：鮮紅色
+$cReset       = "$ESC[0m"
+$cGray        = "$ESC[90m"  # 時間戳記：深灰色
+$cBlue        = "$ESC[94m"  # 數字/秒數：藍色
+$cBrightGreen = "$ESC[92m"  # X座標 / s單位：鮮綠色
+$cBrightRed   = "$ESC[91m"  # Y座標：鮮紅色
 
 # 按鍵色彩調色盤
 $keyPalette = @(
@@ -133,13 +131,13 @@ function Get-KeyColor([int]$vk) {
 
 function Format-Sec([double]$sec) {
     $val = $sec.ToString('F2')
-    return "${cBlue}${val}${cGreen}s${cReset}"
+    return "${cBlue}${val}${cBrightGreen}s${cReset}"
 }
 
 function Format-PlusSec([double]$sec1, [double]$sec2) {
     $s1 = $sec1.ToString('F2')
     $s2 = $sec2.ToString('F2')
-    return "${cBlue}${s1}${cReset}+${cBlue}${s2}${cGreen}s${cReset}"
+    return "${cBlue}${s1}${cReset}+${cBlue}${s2}${cBrightGreen}s${cReset}"
 }
 
 function Clear-PreviousLine {
@@ -277,7 +275,6 @@ function Get-CurrentLanguage {
         }
     }
 
-    # 取得 IME 中/英 模式
     $imeMode = $type::GetImeModeString($hwnd)
 
     return "$langName$imeMode"
@@ -303,6 +300,7 @@ $prevGapSec = 0.0
 $canErasePreviousSinglePress = $false
 $lastSinglePressVk = 0
 $lastSinglePressTime = $null
+$lastSinglePressPosStr = ""
 
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host "  資安測試終端：鍵盤/滑鼠/組合鍵/剪貼簿/視窗監控" -ForegroundColor Cyan
@@ -374,7 +372,6 @@ while ($true) {
             continue
         }
 
-        # 雙重狀態確認
         $isPressed = (($keyStateBuffer[$vk] -band 0x80) -ne 0) -or (($type::GetAsyncKeyState($vk) -band 0x8000) -ne 0)
 
         if ($isPressed) {
@@ -384,7 +381,7 @@ while ($true) {
                 $kName = Get-KeyName $vk
                 $kColor = Get-KeyColor $vk
                 $isMouse = $mouseVKs -contains $vk
-                $posStr = if ($isMouse) { " " + ($type::GetMousePosStringColored($cGreen, $cRed, $cReset)) } else { "" }
+                $posStr = if ($isMouse) { " " + ($type::GetMousePosStringColored($cBrightGreen, $cBrightRed, $cReset)) } else { "" }
 
                 $activeModsCount = 0
                 foreach ($mvk in $modifierVKs) {
@@ -457,15 +454,10 @@ while ($true) {
                 } else {
                     # --- 普通單鍵 / 滑鼠按下 ---
                     Write-Host "$(Get-TimeStamp)按下 ${kColor}${kName}${cReset}$posStr"
-                    
-                    if ($isMouse) {
-                        # 滑鼠點擊獨立紀錄按下與放開，不覆蓋上一行
-                        $canErasePreviousSinglePress = $false
-                    } else {
-                        $canErasePreviousSinglePress = $true
-                        $lastSinglePressVk = $vk
-                        $lastSinglePressTime = $now
-                    }
+                    $canErasePreviousSinglePress = $true
+                    $lastSinglePressVk = $vk
+                    $lastSinglePressTime = $now
+                    $lastSinglePressPosStr = $posStr
                 }
             }
         } else {
@@ -478,7 +470,7 @@ while ($true) {
                 $kColor = Get-KeyColor $vk
                 $durStr = Format-Sec $duration
                 $isMouse = $mouseVKs -contains $vk
-                $posStr = if ($isMouse) { " " + ($type::GetMousePosStringColored($cGreen, $cRed, $cReset)) } else { "" }
+                $posStr = if ($isMouse) { " " + ($type::GetMousePosStringColored($cBrightGreen, $cBrightRed, $cReset)) } else { "" }
 
                 if ($comboActive) {
                     if ($modifierVKs -notcontains $vk) {
@@ -497,10 +489,14 @@ while ($true) {
                         $canErasePreviousSinglePress = $false
                     }
                 } else {
-                    # --- 單鍵 / 滑鼠放開 ---
+                    # --- 單鍵 / 滑鼠放開覆蓋機制 ---
                     if ($canErasePreviousSinglePress -and $lastSinglePressVk -eq $vk) {
                         Clear-PreviousLine
-                        Write-Host "$(Get-TimeStamp)按下又放開 ${kColor}${kName}${cReset} 持續 $durStr$posStr"
+                        if ($isMouse) {
+                            Write-Host "$(Get-TimeStamp)按下又放開 ${kColor}${kName}${cReset} 持續 $durStr$lastSinglePressPosStr →$posStr"
+                        } else {
+                            Write-Host "$(Get-TimeStamp)按下又放開 ${kColor}${kName}${cReset} 持續 $durStr"
+                        }
                     } else {
                         Write-Host "$(Get-TimeStamp)放開 ${kColor}${kName}${cReset} $durStr$posStr"
                     }
