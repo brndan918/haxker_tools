@@ -1,5 +1,5 @@
 # 請使用以下方法進行參數傳送
-& ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/force_msgbox/msg.txt").Content))
+# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/force_msgbox/msg.txt").Content))
 
 param(
     # 視窗標題 (預設: "測試訊息")
