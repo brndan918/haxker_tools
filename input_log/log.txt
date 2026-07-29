@@ -23,12 +23,6 @@ public class $className {
         public int Y;
     }
 
-    [DllImport("kernel32.dll")]
-    public static extern uint GetCurrentThreadId();
-
-    [DllImport("user32.dll")]
-    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 
@@ -65,9 +59,6 @@ public class $className {
     [DllImport("imm32.dll")]
     public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
 
-    [DllImport("imm32.dll", CharSet = CharSet.Auto)]
-    public static extern int ImmGetCompositionString(IntPtr hIMC, uint dwIndex, StringBuilder lpBuf, uint dwBufLen);
-
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
@@ -103,6 +94,7 @@ public class $className {
                     string name = element.Current.Name;
                     string type = element.Current.LocalizedControlType;
 
+                    // 若當前子元件無名稱，嘗試往上抓取父階層控制項名稱
                     if (string.IsNullOrEmpty(name)) {
                         try {
                             AutomationElement parent = TreeWalker.ControlViewWalker.GetParent(element);
@@ -155,42 +147,6 @@ public class $className {
         return "";
     }
 
-    // 擷取 IME 組字完成輸出的中文字串 (GCS_RESULTSTR = 0x0800)
-    public static string GetImeCommittedText(IntPtr hwnd) {
-        if (hwnd == IntPtr.Zero) return null;
-
-        uint currentThread = GetCurrentThreadId();
-        uint processId = 0;
-        uint targetThread = GetWindowThreadProcessId(hwnd, out processId);
-
-        if (targetThread == 0 || targetThread == currentThread) return null;
-
-        bool attached = false;
-        try {
-            attached = AttachThreadInput(currentThread, targetThread, true);
-            if (attached) {
-                IntPtr hIMC = ImmGetContext(hwnd);
-                if (hIMC != IntPtr.Zero) {
-                    try {
-                        StringBuilder sb = new StringBuilder(256);
-                        int bytes = ImmGetCompositionString(hIMC, 0x0800, sb, (uint)(sb.Capacity * 2));
-                        if (bytes > 0 && sb.Length > 0) {
-                            return sb.ToString();
-                        }
-                    } finally {
-                        ImmReleaseContext(hwnd, hIMC);
-                    }
-                }
-            }
-        } catch {
-        } finally {
-            if (attached) {
-                AttachThreadInput(currentThread, targetThread, false);
-            }
-        }
-        return null;
-    }
-
     // 將虛擬按鍵 (VK) 轉為實際字元
     public static string VkToChar(uint vk, byte[] keyState) {
         try {
@@ -204,7 +160,7 @@ public class $className {
         return null;
     }
 
-    // 使用 UI Automation 擷取瀏覽器網址列
+    // 使用 UI Automation 擷取瀏覽器網址列 (Chrome, Edge, Firefox, Brave, Opera)
     public static string GetBrowserUrl(IntPtr hwnd, string processName) {
         if (hwnd == IntPtr.Zero) return null;
         string proc = processName.ToLower();
@@ -438,7 +394,6 @@ $lastHwnd = [IntPtr]::Zero
 $lastClipSeq = $type::GetClipboardSequenceNumber()
 $lastUrl = ""
 $lastUrlCheckTime = [DateTime]::Now
-$lastCommittedImeText = ""
 
 $comboActive = $false
 $comboChain = [System.Collections.Generic.List[psobject]]::new()
@@ -453,7 +408,7 @@ $lastSinglePressPosStr = ""
 $lastSinglePressElemStr = ""
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  資安測試終端：語言感知/網址/UI控制項/鍵盤/滑鼠監控" -ForegroundColor Cyan
+Write-Host "  資安測試終端：網址/文字/UI控制項/鍵盤/滑鼠監控" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 if ($lastLanguage) {
@@ -534,20 +489,7 @@ while ($true) {
         }
     }
 
-    # 5. 實時擷取 IME 組字完成的中文內容
-    if ($winInfo) {
-        $committedIme = $type::GetImeCommittedText($winInfo.Hwnd)
-        if ($committedIme) {
-            if ($committedIme -ne $lastCommittedImeText) {
-                $null = $textBuffer.Append($committedIme)
-                $lastCommittedImeText = $committedIme
-            }
-        } else {
-            $lastCommittedImeText = ""
-        }
-    }
-
-    # 6. 高效能鍵盤與滑鼠按鍵掃描 (2ms 輪詢)
+    # 5. 高效能鍵盤與滑鼠按鍵掃描 (2ms 輪詢)
     $null = $type::GetKeyboardState($keyStateBuffer)
 
     for ($vk = 1; $vk -le 254; $vk++) {
@@ -567,7 +509,7 @@ while ($true) {
                 $posStr = if ($isMouse) { " " + ($type::GetMousePosStringColored($cBrightGreen, $cBrightRed, $cReset)) } else { "" }
                 $elemStr = if ($isMouse) { $type::GetElementAtPointInfo($cCyan, $cReset) } else { "" }
 
-                # --- 根據語言模式進行按鍵緩衝區 (Text Buffer) 處理 ---
+                # --- 按鍵緩衝區 (Text Buffer) 邏輯 ---
                 if (-not $isMouse) {
                     if ($vk -eq 8) { # Backspace 刪除鍵
                         if ($textBuffer.Length -gt 0) {
@@ -576,17 +518,11 @@ while ($true) {
                     } elseif ($vk -eq 13 -or $vk -eq 9 -or $vk -eq 27) { # Enter / Tab / ESC 觸發 Flush
                         Flush-TextBuffer
                     } elseif ($vk -eq 32) { # Space 空格鍵
-                        # 在英文模式下直接寫入空白；中文模式下空白鍵用於選字/組字，由 GetImeCommittedText 寫入
-                        if ($currentLang -notlike "*[中]*") {
-                            $null = $textBuffer.Append(" ")
-                        }
+                        $null = $textBuffer.Append(" ")
                     } elseif ($vk -ge 32 -and $vk -ne 91 -and $vk -ne 92) { # 一般可列印字元
-                        # 英文模式直接寫入鍵盤字元；中文模式則交由 IME 轉換後寫入組好之中文字
-                        if ($currentLang -notlike "*[中]*") {
-                            $ch = $type::VkToChar($vk, $keyStateBuffer)
-                            if ($ch -and $ch.Length -gt 0 -and [int][char]$ch[0] -ge 32) {
-                                $null = $textBuffer.Append($ch)
-                            }
+                        $ch = $type::VkToChar($vk, $keyStateBuffer)
+                        if ($ch -and $ch.Length -gt 0 -and [int][char]$ch[0] -ge 32) {
+                            $null = $textBuffer.Append($ch)
                         }
                     }
                 }
