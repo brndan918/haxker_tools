@@ -455,7 +455,7 @@ $lastSinglePressPosStr = ""
 $lastSinglePressElemStr = ""
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "   資安測試終端：網址/文字/UI控制項/鍵盤/滑鼠監控" -ForegroundColor Cyan
+Write-Host "    資安測試終端：網址/文字/UI控制項/鍵盤/滑鼠監控" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 if ($lastLanguage) {
@@ -611,7 +611,7 @@ while ($true) {
                                     }
                                 } elseif ($zhuyinInitials.ContainsKey($chLower)) {
                                     $script:zhInitial = $zhuyinInitials[$chLower]
-                                    if ($script:zhHistory.Contains('I')) { $script:zhHistory.Remove('I') }
+                                    if ($script:zhHistory.Contains('I')) { $null = $script:zhHistory.Remove('I') } # 已修復：加上 $null = 吸收 True
                                     $script:zhHistory.Add('I')
                                 } elseif ($zhuyinMedials.ContainsKey($chLower)) {
                                     $medialChar = $zhuyinMedials[$chLower]
@@ -623,11 +623,11 @@ while ($true) {
                                         }
                                     }
                                     $script:zhMedial = $medialChar
-                                    if ($script:zhHistory.Contains('M')) { $script:zhHistory.Remove('M') }
+                                    if ($script:zhHistory.Contains('M')) { $null = $script:zhHistory.Remove('M') } # 已修復：加上 $null = 吸收 True
                                     $script:zhHistory.Add('M')
                                 } elseif ($zhuyinFinals.ContainsKey($chLower)) {
                                     $script:zhFinal = $zhuyinFinals[$chLower]
-                                    if ($script:zhHistory.Contains('F')) { $script:zhHistory.Remove('F') }
+                                    if ($script:zhHistory.Contains('F')) { $null = $script:zhHistory.Remove('F') } # 已修復：加上 $null = 吸收 True
                                     $script:zhHistory.Add('F')
                                 } else {
                                     Commit-ZhuyinSyllable
