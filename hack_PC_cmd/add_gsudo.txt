@@ -6,7 +6,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 Add-MpPreference -ExclusionPath "$env:USERPROFILE\scoop", "$env:ProgramData\scoop"
 
 # 2. Silently install gsudo via Scoop
-scoop install gsudo -y
+scoop install gsudo
 
 # 2.5 [CRITICAL FIX] Dynamically refresh environment variables ($env:Path) in current session
 # This allows the subsequent commands to locate gsudo.exe immediately without restarting the shell
