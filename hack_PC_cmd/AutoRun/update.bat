@@ -11,7 +11,11 @@ powershell -Command "Start-Process powershell -WindowStyle Hidden -ArgumentList 
 set "STARTUP=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
 set "valueName=AutoHostScript"
 
-reg delete "%STARTUP%" /v "%valueName%" /f
+try {
+    reg delete "%STARTUP%" /v "%valueName%" /f
+} catch {
+    echo.
+}
 
 cd /d %temp%
 
