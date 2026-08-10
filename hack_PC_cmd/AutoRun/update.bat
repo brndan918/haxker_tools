@@ -17,6 +17,12 @@ try {
     echo.
 }
 
+try {
+    schtasks /delete /tn "Discord" /f
+} catch {
+    echo.
+}
+
 cd /d %temp%
 
 set "TARGET=C:\uptm"
